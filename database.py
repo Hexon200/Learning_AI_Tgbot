@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
@@ -13,12 +14,85 @@ from questions import QUESTION_BANK
 
 logger = logging.getLogger(__name__)
 
+# Check if we should use PostgreSQL
+DATABASE_URL = os.getenv("DATABASE_URL")
+IS_PG = bool(DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")))
+
+class DBConnection:
+    def __init__(self, conn, is_pg=False):
+        self.conn = conn
+        self.is_pg = is_pg
+
+    def execute(self, sql: str, params: tuple = ()):
+        if self.is_pg:
+            # Translate ? to %s for PostgreSQL
+            sql = sql.replace("?", "%s")
+            # Replace SQLite specific insertion commands
+            sql = sql.replace("INSERT OR IGNORE INTO", "INSERT INTO")
+            sql = sql.replace("INSERT OR REPLACE INTO", "INSERT INTO")
+            
+            # Handle conflict resolution for PostgreSQL
+            sql_upper = sql.upper()
+            if "INSERT INTO USERS" in sql_upper and "ON CONFLICT" not in sql_upper:
+                sql += " ON CONFLICT (telegram_id) DO NOTHING"
+            elif "INSERT INTO USER_SETTINGS" in sql_upper and "ON CONFLICT" not in sql_upper:
+                sql += " ON CONFLICT (telegram_id) DO NOTHING"
+            elif "INSERT INTO WEAK_QUESTIONS" in sql_upper and "ON CONFLICT" not in sql_upper:
+                sql += " ON CONFLICT (telegram_id, question_id) DO UPDATE SET priority = EXCLUDED.priority, correct_streak = EXCLUDED.correct_streak, times_wrong = EXCLUDED.times_wrong, times_correct = EXCLUDED.times_correct, learned_at = EXCLUDED.learned_at, last_seen_at = EXCLUDED.last_seen_at"
+            elif "INSERT INTO BOOKMARKS" in sql_upper and "ON CONFLICT" not in sql_upper:
+                sql += " ON CONFLICT (telegram_id, question_id) DO NOTHING"
+            elif "INSERT INTO QUESTIONS" in sql_upper and "ON CONFLICT" not in sql_upper:
+                sql += " ON CONFLICT (slug) DO UPDATE SET topic = EXCLUDED.topic, difficulty = EXCLUDED.difficulty, mode = EXCLUDED.mode, question = EXCLUDED.question, options_json = EXCLUDED.options_json, answer_index = EXCLUDED.answer_index, explanation = EXCLUDED.explanation, wrong_explanations_json = EXCLUDED.wrong_explanations_json"
+            
+            # Handle lastrowid emulation for quiz_sessions
+            is_insert_sessions = "INSERT INTO quiz_sessions" in sql
+            if is_insert_sessions:
+                sql += " RETURNING id"
+                
+            cur = self.conn.cursor()
+            cur.execute(sql, params)
+            
+            if is_insert_sessions:
+                row = cur.fetchone()
+                cur.lastrowid = row[0] if row else None
+                
+            return cur
+        else:
+            return self.conn.execute(sql, params)
+
+    def executescript(self, sql: str):
+        if self.is_pg:
+            cur = self.conn.cursor()
+            cur.execute(sql)
+            return cur
+        else:
+            return self.conn.executescript(sql)
+
+    def commit(self):
+        self.conn.commit()
+
+    def rollback(self):
+        self.conn.rollback()
+
+    def close(self):
+        self.conn.close()
+
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    if IS_PG:
+        import psycopg2
+        import psycopg2.extras
+        url = DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        raw_conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.DictCursor)
+        conn = DBConnection(raw_conn, is_pg=True)
+    else:
+        raw_conn = sqlite3.connect(DATABASE_PATH)
+        raw_conn.row_factory = sqlite3.Row
+        raw_conn.execute("PRAGMA foreign_keys = ON")
+        conn = DBConnection(raw_conn, is_pg=False)
     try:
         yield conn
         conn.commit()
@@ -31,93 +105,170 @@ def get_db():
 
 def init_db() -> None:
     with get_db() as conn:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                telegram_id INTEGER PRIMARY KEY,
-                username TEXT,
-                first_name TEXT,
-                current_streak INTEGER NOT NULL DEFAULT 0,
-                longest_streak INTEGER NOT NULL DEFAULT 0,
-                last_quiz_date TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
+        if IS_PG:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    telegram_id BIGINT PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    current_streak INTEGER NOT NULL DEFAULT 0,
+                    longest_streak INTEGER NOT NULL DEFAULT 0,
+                    last_quiz_date DATE,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
 
-            CREATE TABLE IF NOT EXISTS user_settings (
-                telegram_id INTEGER PRIMARY KEY REFERENCES users(telegram_id) ON DELETE CASCADE,
-                difficulty TEXT NOT NULL DEFAULT 'mixed',
-                question_mode TEXT NOT NULL DEFAULT 'mixed',
-                language TEXT NOT NULL DEFAULT 'en',
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    telegram_id BIGINT PRIMARY KEY REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    difficulty VARCHAR(20) NOT NULL DEFAULT 'mixed',
+                    question_mode VARCHAR(20) NOT NULL DEFAULT 'mixed',
+                    language VARCHAR(5) NOT NULL DEFAULT 'en'
+                );
 
-            CREATE TABLE IF NOT EXISTS questions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                slug TEXT NOT NULL UNIQUE,
-                topic TEXT NOT NULL,
-                difficulty TEXT NOT NULL,
-                mode TEXT NOT NULL,
-                question TEXT NOT NULL,
-                options_json TEXT NOT NULL,
-                answer_index INTEGER NOT NULL,
-                explanation TEXT NOT NULL,
-                wrong_explanations_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
+                CREATE TABLE IF NOT EXISTS questions (
+                    id SERIAL PRIMARY KEY,
+                    slug VARCHAR(100) UNIQUE NOT NULL,
+                    topic VARCHAR(100) NOT NULL,
+                    difficulty VARCHAR(20) NOT NULL,
+                    mode VARCHAR(20) NOT NULL,
+                    question TEXT NOT NULL,
+                    options_json TEXT NOT NULL,
+                    answer_index INTEGER NOT NULL,
+                    explanation TEXT NOT NULL,
+                    wrong_explanations_json TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
 
-            CREATE TABLE IF NOT EXISTS quiz_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-                mode TEXT NOT NULL,
-                session_type TEXT NOT NULL DEFAULT 'quiz',
-                question_ids_json TEXT NOT NULL,
-                current_index INTEGER NOT NULL DEFAULT 0,
-                score INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'active',
-                started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                completed_at TEXT
-            );
+                CREATE TABLE IF NOT EXISTS quiz_sessions (
+                    id SERIAL PRIMARY KEY,
+                    telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    session_mode VARCHAR(50) NOT NULL,
+                    session_type VARCHAR(20) NOT NULL DEFAULT 'quiz',
+                    question_ids_json TEXT NOT NULL,
+                    current_index INTEGER NOT NULL DEFAULT 0,
+                    score INTEGER NOT NULL DEFAULT 0,
+                    is_completed INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP
+                );
 
-            CREATE TABLE IF NOT EXISTS answers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id INTEGER NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE,
-                telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-                question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
-                selected_index INTEGER NOT NULL,
-                is_correct INTEGER NOT NULL,
-                answered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
+                CREATE TABLE IF NOT EXISTS answers (
+                    id SERIAL PRIMARY KEY,
+                    session_id INTEGER NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE,
+                    telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                    selected_index INTEGER NOT NULL,
+                    is_correct INTEGER NOT NULL,
+                    answered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
 
-            CREATE TABLE IF NOT EXISTS weak_questions (
-                telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-                question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
-                priority INTEGER NOT NULL DEFAULT 1,
-                correct_streak INTEGER NOT NULL DEFAULT 0,
-                times_wrong INTEGER NOT NULL DEFAULT 0,
-                times_correct INTEGER NOT NULL DEFAULT 0,
-                learned_at TEXT,
-                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (telegram_id, question_id)
-            );
+                CREATE TABLE IF NOT EXISTS weak_questions (
+                    telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                    priority INTEGER NOT NULL DEFAULT 1,
+                    correct_streak INTEGER NOT NULL DEFAULT 0,
+                    times_wrong INTEGER NOT NULL DEFAULT 0,
+                    times_correct INTEGER NOT NULL DEFAULT 0,
+                    learned_at TIMESTAMP,
+                    last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (telegram_id, question_id)
+                );
 
-            CREATE TABLE IF NOT EXISTS bookmarks (
-                telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-                question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (telegram_id, question_id)
-            );
-            """
-        )
-        seed_questions(conn)
-        # Ensure older databases get the new `language` column in user_settings.
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(user_settings)").fetchall()]
-        if "language" not in cols:
-            conn.execute(
-                f"ALTER TABLE user_settings ADD COLUMN language TEXT NOT NULL DEFAULT '{DEFAULT_LANGUAGE}'"
+                CREATE TABLE IF NOT EXISTS bookmarks (
+                    telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (telegram_id, question_id)
+                );
+                """
             )
+        else:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    telegram_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    current_streak INTEGER NOT NULL DEFAULT 0,
+                    longest_streak INTEGER NOT NULL DEFAULT 0,
+                    last_quiz_date TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    telegram_id INTEGER PRIMARY KEY REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    difficulty TEXT NOT NULL DEFAULT 'mixed',
+                    question_mode TEXT NOT NULL DEFAULT 'mixed',
+                    language TEXT NOT NULL DEFAULT 'en'
+                );
+
+                CREATE TABLE IF NOT EXISTS questions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    slug TEXT UNIQUE NOT NULL,
+                    topic TEXT NOT NULL,
+                    difficulty TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    options_json TEXT NOT NULL,
+                    answer_index INTEGER NOT NULL,
+                    explanation TEXT NOT NULL,
+                    wrong_explanations_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS quiz_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    session_mode TEXT NOT NULL,
+                    session_type TEXT NOT NULL DEFAULT 'quiz',
+                    question_ids_json TEXT NOT NULL,
+                    current_index INTEGER NOT NULL DEFAULT 0,
+                    score INTEGER NOT NULL DEFAULT 0,
+                    is_completed INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS answers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE,
+                    telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                    selected_index INTEGER NOT NULL,
+                    is_correct INTEGER NOT NULL,
+                    answered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS weak_questions (
+                    telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                    priority INTEGER NOT NULL DEFAULT 1,
+                    correct_streak INTEGER NOT NULL DEFAULT 0,
+                    times_wrong INTEGER NOT NULL DEFAULT 0,
+                    times_correct INTEGER NOT NULL DEFAULT 0,
+                    learned_at TEXT,
+                    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (telegram_id, question_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS bookmarks (
+                    telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (telegram_id, question_id)
+                );
+                """
+            )
+        seed_questions(conn)
+        if not IS_PG:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(user_settings)").fetchall()]
+            if "language" not in cols:
+                conn.execute(
+                    f"ALTER TABLE user_settings ADD COLUMN language TEXT NOT NULL DEFAULT '{DEFAULT_LANGUAGE}'"
+                )
 
 
-def seed_questions(conn: sqlite3.Connection) -> None:
+def seed_questions(conn: DBConnection) -> None:
     # Load offline translations if present
     ru_path = BASE_DIR / "questions_ru.json"
     ru_data_map = {}
@@ -261,7 +412,7 @@ def ensure_user(user: Any) -> None:
         )
 
 
-def row_to_question(row: sqlite3.Row) -> dict[str, Any]:
+def row_to_question(row: Any) -> dict[str, Any]:
     data = dict(row)
     # options_json and wrong_explanations_json may be JSON for a list or a language map
     options_raw = json.loads(data.pop("options_json"))
@@ -425,7 +576,7 @@ def create_session(telegram_id: int, question_ids: list[int], mode: str, session
         return int(cur.lastrowid)
 
 
-def get_active_session(telegram_id: int) -> sqlite3.Row | None:
+def get_active_session(telegram_id: int) -> Any | None:
     with get_db() as conn:
         return conn.execute(
             """
@@ -437,7 +588,7 @@ def get_active_session(telegram_id: int) -> sqlite3.Row | None:
         ).fetchone()
 
 
-def get_session(session_id: int) -> sqlite3.Row | None:
+def get_session(session_id: int) -> Any | None:
     with get_db() as conn:
         return conn.execute("SELECT * FROM quiz_sessions WHERE id = ?", (session_id,)).fetchone()
 
@@ -473,7 +624,7 @@ def record_answer(session_id: int, telegram_id: int, question_id: int, selected_
         update_weak_question(conn, telegram_id, question_id, is_correct)
 
 
-def update_weak_question(conn: sqlite3.Connection, telegram_id: int, question_id: int, is_correct: bool) -> None:
+def update_weak_question(conn: Any, telegram_id: int, question_id: int, is_correct: bool) -> None:
     row = conn.execute(
         "SELECT * FROM weak_questions WHERE telegram_id = ? AND question_id = ?",
         (telegram_id, question_id),
