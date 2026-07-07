@@ -1,3 +1,13 @@
+---
+title: Tg Bot AI
+emoji: 🧠
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Telegram AI and LLM Quiz Bot
 
 A local Telegram bot that teaches AI and LLM concepts through button-driven quiz sessions.
