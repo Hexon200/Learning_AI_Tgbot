@@ -5,6 +5,7 @@ import sys
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
+from telegram.request import HTTPXRequest
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from config import (
@@ -1103,7 +1104,11 @@ def main() -> None:
     thread.start()
 
     init_db()
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Configure longer connection timeouts for cloud environments
+    request = HTTPXRequest(connect_timeout=30.0, read_timeout=30.0, write_timeout=30.0)
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).request(request).build()
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("cancel", cancel))
@@ -1113,7 +1118,7 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(callback_router))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, fallback_message))
     logger.info("Bot started")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, bootstrap_retries=5)
 
 
 if __name__ == "__main__":
