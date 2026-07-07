@@ -1,0 +1,487 @@
+{
+  "ai-winters": {
+    "A ban on linear algebra": "Linear algebra is fundamental to AI and was never banned; funding cuts occurred due to unmet expectations.",
+    "The invention of GPUs": "GPUs actually helped end AI winters by accelerating compute; they did not cause them.",
+    "Models becoming too accurate": "AI winters occurred because models were too brittle and failed, not because they were too accurate."
+  },
+  "imagenet-impact": {
+    "It invented SQL": "SQL was invented in the 1970s for relational databases; ImageNet is a computer vision dataset from 2009.",
+    "It ended the need for labeled data": "ImageNet is a highly labeled dataset; it proved the power of supervised learning at scale.",
+    "It was only a chatbot dataset": "ImageNet consists of millions of labeled images, not text for conversational chatbots."
+  },
+  "alexnet-significance": {
+    "Symbolic AI had solved natural language": "AlexNet was a deep learning model for computer vision, unrelated to symbolic natural language processing.",
+    "Tiny rule systems beat all neural models": "AlexNet proved that deep neural networks outclassed traditional rule-based and shallow computer vision systems.",
+    "Transformers had replaced CNNs": "AlexNet was a Convolutional Neural Network (CNN); Transformers were not invented until 2017."
+  },
+  "scaling-laws": {
+    "A legal rule for AI copyright": "Scaling laws are empirical scientific observations of performance trends, not legal regulations.",
+    "A guarantee of perfect reasoning": "Scaling laws predict lower loss/perplexity, but do not guarantee reasoning accuracy or eliminate hallucinations.",
+    "A method for shrinking every model to zero": "Scaling laws describe the effects of increasing parameters and data, not shrinking models to zero."
+  },
+  "data-quality-pretraining": {
+    "The model ignores all text quality": "Pretrained models learn statistical patterns directly from data, meaning they absorb errors and noise.",
+    "Only the file extension matters": "The semantic content and cleanliness of the data matter, not just file formats or extensions.",
+    "Quality matters only after deployment": "Data quality issues during pretraining shape core behaviors that are hard to correct post-deployment."
+  },
+  "tokenizer-role": {
+    "It verifies facts automatically": "Tokenizers only split text into numeric sequences; they do not perform fact-checking.",
+    "It stores user passwords": "Tokenizers process prompt text in memory and do not serve as password storage databases.",
+    "It replaces the neural network": "A tokenizer is a preprocessing tool that prepares input text for the neural network."
+  },
+  "tokenization-surprise": {
+    "Numbers are never tokenized": "Numbers are tokenized, but often into erratic sub-word parts that make math harder for the model.",
+    "Rare words are always deleted": "Rare words are kept but split into smaller, sometimes confusing sub-word pieces.",
+    "Tokenization runs only after the answer": "Tokenization must run first to convert the input text into a format the model can read."
+  },
+  "instruction-tuning": {
+    "Training only on image pixels": "Instruction tuning is applied to text models to improve natural language understanding and assistant capabilities.",
+    "Compressing a vector database": "Instruction tuning alters model weights, whereas vector databases are external document stores.",
+    "Removing all safety data": "Instruction tuning typically includes safety examples to align model behavior and enforce guardrails."
+  },
+  "lora-purpose": {
+    "Making prompts shorter by magic": "LoRA modifies model parameter updates during training; it does not compress prompt text.",
+    "Replacing the tokenizer with SQL": "LoRA is a parameter-efficient tuning method for neural weights, not a database or tokenizer replacement.",
+    "Guaranteeing no overfitting": "While LoRA reduces parameters, overfitting can still occur if the dataset is too small or narrow."
+  },
+  "overfitting-finetune": {
+    "The model becomes unable to tokenize": "Overfitting affects generalization and generation quality, not the tokenizer's capability.",
+    "The GPU becomes a vector database": "A GPU is hardware for compute; overfitting does not alter hardware roles.",
+    "The model can no longer answer any old task by definition": "The model might lose some general capabilities (catastrophic forgetting), but not all capabilities by definition."
+  },
+  "rlhf-purpose": {
+    "Training the first tokenizer": "Tokenizers are trained unsupervised before pretraining; RLHF is a post-pretraining alignment step.",
+    "Increasing hard drive space": "RLHF updates model parameters to change output behavior, not to increase storage space.",
+    "Replacing all evaluation": "RLHF is a training method, not an evaluation framework; rigorous evaluations are still required."
+  },
+  "reward-model": {
+    "It executes tools": "A reward model evaluates text quality; it does not connect to or execute external tools.",
+    "It stores embeddings": "A reward model outputs scalar scores; it does not store semantic vectors like a database.",
+    "It generates the training corpus from nothing": "A reward model scores existing model completions; it does not create the initial pretraining text."
+  },
+  "rlhf-limit": {
+    "It prevents all jailbreaks": "Jailbreaks can bypass RLHF safeguards using adversarial prompts or roleplay.",
+    "It removes the need for system prompts": "System prompts are still essential to set context, instructions, and rules.",
+    "It makes models deterministic forever": "RLHF models still sample tokens probabilistically unless temperature is set to zero."
+  },
+  "dpo-vs-rlhf": {
+    "It needs no preference data": "DPO still requires preference data; it simply avoids training a separate reward model.",
+    "It is a vector database": "DPO is a loss formulation for weight optimization, not an external vector search engine.",
+    "It only works for image models": "DPO is heavily used and was designed for aligning language models."
+  },
+  "rag-basic": {
+    "Training a model from scratch on every prompt": "RAG retrieves existing documents at query time; it does not train the model from scratch.",
+    "A method for deleting context": "RAG adds relevant context to the prompt, rather than deleting it.",
+    "A benchmark for GPU fans": "RAG is a software pattern for document retrieval, not a hardware stress test."
+  },
+  "rag-not-training": {
+    "They are exactly identical": "RAG provides context in the prompt; fine-tuning updates the neural network's weights.",
+    "RAG always requires model weight updates": "RAG operates on frozen weights by feeding retrieved documents into the context window.",
+    "Fine-tuning only stores PDFs": "Fine-tuning updates parameters using text datasets; it does not store PDF documents."
+  },
+  "rag-chunking": {
+    "Chunks make embeddings unnecessary": "Chunking is done prior to generating embeddings so that vectors represent coherent text blocks.",
+    "Chunks encrypt the model weights": "Document chunking is a preprocessing step for prompt injection, unrelated to model encryption.",
+    "Chunk size only affects button colors": "Chunk size determines the amount and relevance of context loaded into the prompt."
+  },
+  "rag-citations": {
+    "To make answers longer automatically": "Citations are meant for verification and debugging, not simply to increase length.",
+    "To avoid storing documents": "Documents must still be stored to show the source content when referenced.",
+    "To train GPUs": "Citations are processed at inference time and are not used to train hardware accelerators."
+  },
+  "rag-failure-mode": {
+    "The database always answers perfectly": "Retrieval databases can fail to find relevant records or return outdated/incorrect documents.",
+    "The model stops using tokens": "The model still processes text using tokens regardless of whether retrieval succeeds.",
+    "Embeddings become human-readable prose": "Embeddings are numeric vectors and remain abstract representations."
+  },
+  "embedding-definition": {
+    "A plain-text password": "Embeddings are arrays of numbers representing meaning; they are not credentials.",
+    "A Telegram command": "Embeddings are numeric arrays used in vector space, not chatbot commands.",
+    "A hand-written grammar rule": "Embeddings are learned statistical vectors, not hand-coded rule templates."
+  },
+  "embedding-similarity": {
+    "How many files are in SQLite": "Cosine similarity measures vector direction angles, not database file counts.",
+    "How expensive a GPU is": "Cosine similarity is a geometric calculation, unrelated to hardware pricing.",
+    "Whether the answer is legally approved": "Similarity checks find semantically related text; they do not perform legal compliance checks."
+  },
+  "embedding-model-choice": {
+    "All embedding models are identical": "Models vary in vector dimensions, language coverage, and domain specialization.",
+    "Only model file size matters": "A small model trained on specialized domains can outperform a large general-purpose model.",
+    "Embedding models cannot handle text": "Embedding models specifically convert input text into numeric vectors."
+  },
+  "embedding-drift": {
+    "SQLite requires it by law": "Re-indexing is a technical compatibility requirement, not a legal database regulation.",
+    "The documents disappear": "The text documents remain; only the numeric search vectors must be regenerated.",
+    "It makes LLMs stop hallucinating": "Re-embedding vectors improves search quality, but does not stop model hallucinations."
+  },
+  "vector-db-purpose": {
+    "Rendering Telegram buttons": "Telegram UIs are rendered by application code, not vector database queries.",
+    "Replacing all application code": "Vector databases handle similarity searches; standard application code is still needed.",
+    "Charging a model battery": "LLMs do not have physical batteries; they run on standard servers."
+  },
+  "ann-search": {
+    "It guarantees every answer is factual": "ANN search retrieves relevant documents; it does not check if the model's response is true.",
+    "It removes indexing": "ANN requires creating specialized indexes (like HNSW or IVF) to search quickly.",
+    "It only works for tiny lists": "ANN search is specifically designed for very large scales where exact search is too slow."
+  },
+  "metadata-filtering": {
+    "To make tokens free": "Metadata filtering is a search constraint; it does not change API or token computation costs.",
+    "To convert vectors to images": "Metadata filtering applies logical constraints (e.g. date > 2024), unrelated to image generation.",
+    "To prevent all prompt injection": "Metadata filtering secures data boundaries but does not stop adversarial instructions in prompts."
+  },
+  "agent-definition": {
+    "It has a cartoon avatar": "An agent is defined by its reasoning loops and tool use, not its visual presentation.",
+    "It only answers one fixed FAQ": "Agents are dynamic and solve multi-step problems, unlike static FAQ reply scripts.",
+    "It must always run on a robot": "Most agents run entirely as software on standard web servers."
+  },
+  "agent-loop": {
+    "Compile, delete, sleep, forget": "These are random operations, not a structured reasoning-action loop.",
+    "Tokenize once and stop forever": "Agents process text dynamically at each step, tokenizing multiple times as needed.",
+    "Train a foundation model from scratch each turn": "Agents call existing models; they do not retrain models from scratch at each step."
+  },
+  "agent-risk": {
+    "They never use context": "Agents rely heavily on context to decide their next steps.",
+    "They cannot call tools": "Calling external tools is a defining characteristic of AI agents.",
+    "They are always offline": "Agents often require network access to execute tools and query APIs."
+  },
+  "human-in-loop": {
+    "Before reading its own prompt": "Prompt reading is a safe, internal operation that does not require human approval.",
+    "For every token it generates": "Confirming every single token would make the agent unusable and incredibly slow.",
+    "Only after deployment is over": "Approval is needed during live operation to prevent real-world mistakes."
+  },
+  "tool-use-basic": {
+    "To make it conscious": "Tools provide functional capabilities, not consciousness or self-awareness.",
+    "To avoid all prompts": "Tools are triggered and guided by prompts; they do not eliminate them.",
+    "To remove the need for permissions": "Tool use increases the need for strict execution permissions and boundaries."
+  },
+  "tool-schema": {
+    "They make hallucinations impossible": "The model can still hallucinate arguments even if the schema is strictly defined.",
+    "They replace authentication": "Schemas define data formats; they do not handle security credentials or authentication.",
+    "They are only decorative": "Tool schemas are parsed by the model to generate correctly formatted arguments."
+  },
+  "tool-result-grounding": {
+    "Ignore it and invent an answer": "Ignoring tool outputs defeats the purpose of giving the agent tools in the first place.",
+    "Delete the user message": "Deleting user inputs would break the conversation flow entirely.",
+    "Retrain itself immediately": "Agents process results in the context window; they do not retrain their neural weights."
+  },
+  "tool-safety": {
+    "Give every tool admin access": "Admin access increases the severity of mistakes; least privilege is the safe pattern.",
+    "Hide all logs": "Hiding logs prevents auditing and makes debugging agent behavior impossible.",
+    "Let prompts override permissions": "Prompts are untrusted inputs and must not override security boundaries."
+  },
+  "eval-heldout": {
+    "To make the model larger": "Evaluation data does not increase model parameters or size.",
+    "To avoid measuring anything": "Held-out data is used specifically to measure performance objectively.",
+    "To teach the tokenizer": "Tokenizers are trained on general corpora, not on validation/held-out sets."
+  },
+  "eval-human": {
+    "Automatic metrics are illegal": "Automatic metrics are legal and widely used, but they lack nuance for subjective tasks.",
+    "Humans can inspect model weights by sight": "Model weights are arrays of billions of numbers and cannot be read by sight.",
+    "Benchmarks never change": "Benchmarks change and evolve frequently as models become more capable."
+  },
+  "eval-regression": {
+    "Training only on regressions in statistics": "Regression testing is a validation practice, not a model training methodology.",
+    "Deleting old prompts": "Deleting test prompts prevents verifying that historical features still work.",
+    "Measuring GPU fan speed": "Hardware performance is monitored, but regression testing evaluates software output quality."
+  },
+  "eval-leakage": {
+    "The benchmark server gets dusty": "Benchmark contamination refers to data leakage, not physical server conditions.",
+    "The model refuses every prompt": "Contamination causes models to answer too easily by memorization, not to refuse prompts.",
+    "The tokenizer uses Unicode": "Unicode support is standard for tokenizers and unrelated to benchmark data leakage."
+  },
+  "benchmark-purpose": {
+    "To certify moral perfection": "Benchmarks measure technical performance, not human moral standards.",
+    "To replace product testing": "Benchmarks show general capability but do not replace product-specific testing.",
+    "To store user settings": "User settings are saved in application databases, not capability benchmarks."
+  },
+  "benchmark-limit": {
+    "They are always fake": "Benchmarks are real datasets, but they can be gamed and might not reflect your specific use case.",
+    "They measure only electricity": "Benchmarks test language, coding, or logic capabilities, not power consumption.",
+    "They cannot be gamed": "Benchmarks can be gamed through dataset contamination or specialized fine-tuning."
+  },
+  "mmlu": {
+    "Speech synthesis naturalness": "MMLU is a multiple-choice text benchmark, not an audio synthesis test.",
+    "Database write speed": "Database performance is a software engineering metric, unrelated to MMLU.",
+    "Telegram message delivery": "MMLU tests model knowledge, not chatbot message routing."
+  },
+  "coding-benchmark-limit": {
+    "Benchmarks cannot contain code": "Many benchmarks (like HumanEval) consist entirely of coding puzzles.",
+    "Agents never use tools": "Coding agents rely heavily on tools like terminals and file editors.",
+    "All repositories are identical": "Codebases vary widely in dependencies, styles, and architecture."
+  },
+  "context-window": {
+    "A browser tab title": "Context window is the capacity of the model's active memory, not a browser feature.",
+    "A database backup": "A database backup is a persistent data dump, unrelated to active inference memory.",
+    "A GPU brand": "GPUs are hardware accelerators; context capacity is an architectural limit."
+  },
+  "context-not-memory": {
+    "Long context changes the model weights": "Context window inputs are processed in-memory and do not update model weights.",
+    "The model remembers every user forever automatically": "Conversations are forgotten as soon as the context window is cleared.",
+    "Memory means larger buttons": "Memory relates to data persistence, not UI layouts or button designs."
+  },
+  "lost-in-middle": {
+    "The tokenizer crashes on commas": "Tokenizers handle punctuation easily; 'lost in the middle' is an attention issue.",
+    "The model always stops halfway": "The model still completes generation, but might ignore details in the middle of its prompt.",
+    "The database loses rows": "Database integrity is managed by DBMS and is unaffected by context window dynamics."
+  },
+  "context-cost": {
+    "Models reject all long prompts": "Models can accept long prompts, but they cost more and slow down inference.",
+    "Tokens are unlimited": "Token processing is constrained by compute limits and carries financial costs.",
+    "It automatically improves every answer": "Noisy or irrelevant documents in context can distract the model and worsen the answer."
+  },
+  "hallucination-definition": {
+    "A model seeing images in dreams": "Models do not sleep or dream; hallucinations are simply ungrounded text generations.",
+    "A required part of tokenization": "Tokenization splits text into segments, which is a deterministic process.",
+    "A database index": "An index accelerates database lookups, unrelated to model generation errors."
+  },
+  "hallucination-cause": {
+    "They are connected to too many monitors": "Display monitors do not affect the internal probabilistic calculations of LLMs.",
+    "They cannot generate grammar": "LLMs are excellent at grammar; the issue is that they generate fluent but false claims.",
+    "SQLite forces them to": "SQLite is a storage tool and does not dictate model output content."
+  },
+  "reduce-hallucination": {
+    "Ask for more confident wording": "Demanding confidence often leads to more fluent and convincing hallucinations.",
+    "Remove all citations": "Removing citations makes verification impossible for the user.",
+    "Use only random sampling": "Random sampling increases output variety but does not guarantee factuality."
+  },
+  "hallucination-eval": {
+    "By counting adjectives": "Adjective count does not correlate with semantic truth or accuracy.",
+    "By checking if the answer is long": "Long answers can easily contain detailed, fluent lies.",
+    "By measuring keyboard speed": "Keyboard speed is a user client metric, unrelated to output factuality."
+  },
+  "safety-alignment": {
+    "Making all models the same size": "Alignment is about behavioral control, not model parameters or dimensions.",
+    "Centering text on a page": "Centering text is a CSS layout detail, not AI safety alignment.",
+    "Encrypting embeddings only": "Encryption secures data storage, while alignment guides model behavior."
+  },
+  "prompt-injection": {
+    "A way to add RAM": "Prompt injection is a security vulnerability, not a hardware memory upgrade.",
+    "A normal optimizer step": "Optimizer steps update model weights during training; injection happens at query time.",
+    "A vector compression format": "Prompt injection is an adversarial attack pattern, not a data compression format."
+  },
+  "jailbreak": {
+    "A database migration": "Jailbreaking is a safety bypass technique, unrelated to database schema updates.",
+    "A GPU cooling method": "Jailbreaking is software steering, not hardware thermal management.",
+    "A tokenizer merge rule": "Tokenizer merge rules define how subwords are grouped, unrelated to safety filters."
+  },
+  "data-privacy": {
+    "Models cannot process private text": "Models process any text fed into them; the issue is keeping that text secure.",
+    "Privacy applies only to images": "Text prompts often contain credentials, medical history, or proprietary IP.",
+    "Tokens erase secrets automatically": "Tokens are numeric representations of text and preserve the underlying secrets."
+  },
+  "open-source-models": {
+    "They are always free to use commercially": "Many open-weight models have commercial limits or usage restrictions in their licenses.",
+    "They always beat closed models": "Top closed models often exceed open models in scale and broad reasoning capabilities.",
+    "They need no hardware": "Open models must still be hosted and run on local or cloud accelerators."
+  },
+  "model-license": {
+    "Licenses change tokenizer output": "Licenses are legal agreements and do not alter tokenizer logic.",
+    "Licenses are only for images": "Model licenses apply to model weights, codebases, and generated outputs.",
+    "All open models share one license": "Open weights use a variety of custom licenses (e.g. Llama 3, Apache 2.0, Gemma)."
+  },
+  "distillation": {
+    "Compressing PDFs into vectors only": "Distillation is a neural network training technique, not PDF text extraction.",
+    "Deleting training data": "Distillation requires training data to match the teacher's outputs on target prompts.",
+    "Replacing prompts with SQL": "Distillation changes model weights, not prompt formats or database queries."
+  },
+  "quantization": {
+    "Increasing all weights to infinite precision": "Quantization decreases weight precision (e.g. 16-bit to 4-bit) to save memory.",
+    "Turning text into images": "Quantization is a model compression method, not text-to-image synthesis.",
+    "Guaranteeing better reasoning": "Quantization reduces memory requirements, but usually leads to small quality losses."
+  },
+  "local-llm-benefit": {
+    "To avoid needing any CPU": "Local inference still requires a CPU (and ideally a GPU/NPU) to run.",
+    "To make the model know today's news automatically": "Models only know what is in their training data unless connected to live search tools.",
+    "To remove evaluation needs": "Local models still need evaluation to check accuracy, latency, and task fit."
+  },
+  "local-llm-limit": {
+    "They cannot tokenize text": "Local models run the same tokenizers as cloud models to process input text.",
+    "They require public internet for every token": "A primary benefit of local models is that they can run completely offline.",
+    "They are always more capable than hosted models": "Local models are typically smaller due to consumer hardware limitations."
+  },
+  "multimodal-definition": {
+    "A model with multiple usernames": "Multimodal models process different data types (vision/audio), not usernames.",
+    "A SQL database with two tables": "Databases store structured records; they are not multimodal neural networks.",
+    "A model trained only on plain text": "Unimodal text models process only text; multimodal models accept other types."
+  },
+  "vision-language": {
+    "Only sort database rows": "Vision-language models handle image understanding, not database indexing.",
+    "Only play audio": "Vision-language models process visual inputs, not speaker outputs.",
+    "Never use text": "VLMs use text prompts to ask questions about images and output text answers."
+  },
+  "ocr-vs-vlm": {
+    "It cannot read text": "VLMs are highly capable of reading text within images (visual document understanding).",
+    "It only stores vectors": "VLMs output natural language text, not just numeric vectors.",
+    "It is always smaller than OCR": "OCR engines are usually lightweight, while VLMs are large generative models."
+  },
+  "coding-agent-definition": {
+    "A model that only writes poems": "Coding agents are designed for software engineering tasks, not literature writing.",
+    "A compiler flag": "A compiler compiles code; a coding agent is an autonomous assistant.",
+    "A database migration": "Database migrations change schemas; coding agents write and modify codebase files."
+  },
+  "coding-agent-tests": {
+    "Tests make code private": "Tests verify code correctness; they do not encrypt or secure the repository.",
+    "Tests replace reading code": "Agents must still read and understand code to make edits that pass tests.",
+    "Tests guarantee perfect UX": "Tests check logical contracts, not user experience or design aesthetics."
+  },
+  "coding-agent-diff": {
+    "Diffs are only for images": "Diffs are standard code comparisons showing line additions and deletions.",
+    "Reviewing diffs deletes bugs automatically": "Reviewing diffs helps human developers find mistakes, but does not fix them.",
+    "It replaces all tests": "Diff reviews and unit tests complement each other; one does not replace the other."
+  },
+  "repo-context": {
+    "All repos use identical architecture": "Repos vary significantly in design patterns, style conventions, and packages.",
+    "Context is only needed for comments": "Context is crucial to write functional code that interfaces with existing systems.",
+    "It makes syntax optional": "Syntax rules are determined by the language compiler/interpreter and remain mandatory."
+  },
+  "swe-bench": {
+    "Whether a chatbot can sing": "SWE-bench measures software engineering task success, not audio capabilities.",
+    "Whether embeddings are encrypted": "SWE-bench evaluates issue resolution, not vector database security configurations.",
+    "Whether GPUs are quiet": "Hardware fan noise is a hardware design detail, unrelated to software agent benchmarks."
+  },
+  "temperature": {
+    "The physical GPU temperature only": "Temperature is a probabilistic token scaling parameter, not hardware heat.",
+    "The number of database rows": "Temperature does not alter database contents or record counts.",
+    "The model's license": "Temperature is a generation setting, unrelated to legal usage agreements."
+  },
+  "top-p": {
+    "Always picks the longest word": "Top-p samples from a cumulative probability set; it does not check word length.",
+    "Deletes low-quality datasets": "Top-p is an inference sampling setting, not a training data filter.",
+    "Trains preference models": "Top-p is used at query time; it is not a training optimizer."
+  },
+  "beam-search": {
+    "It cannot generate text": "Beam search is a generation algorithm; it is highly capable of creating text.",
+    "It requires a vector database": "Beam search works directly on token probabilities during model generation.",
+    "It only works for images": "Beam search is heavily used in machine translation and structured text generation."
+  },
+  "system-prompt": {
+    "Storing model weights": "System prompts are text instructions fed into the context window, not parameter arrays.",
+    "Encrypting vectors": "System prompts guide text generation; they do not encrypt database records.",
+    "Measuring benchmark leakage": "Benchmark leakage must be checked using overlap analysis, not prompts."
+  },
+  "structured-output": {
+    "It improves every answer's truth automatically": "A model can output false or hallucinated data in JSON format just as easily as text.",
+    "It removes the need for schemas": "Structured output requires schemas to specify the desired JSON fields and types.",
+    "It makes text unreadable to the model": "Structured constraints are processed by the sampler and remain readable."
+  },
+  "function-calling": {
+    "Making all tools public": "Function calling is a model output mode; it does not modify tool access configurations.",
+    "Replacing the event loop": "Function calling provides the arguments; the application event loop still runs them.",
+    "Avoiding authentication": "Authentication is managed by the application layer and is still required."
+  },
+  "agent-memory": {
+    "All secrets by default": "Storing secrets in durable agent memory increases security exposure risks.",
+    "Only random thoughts": "Memory should store actionable facts and choices to support long-term goals.",
+    "Nothing after user consent": "Memory is preserved across runs to help the user; deleting it completely reduces usefulness."
+  },
+  "planning-limit": {
+    "It eliminates tool errors": "Errors from tools can still happen and might compound if the agent's plan is brittle.",
+    "It makes permissions unnecessary": "Long autonomous planning increases the necessity of strict permissions.",
+    "It prevents all hallucinations": "The model can still hallucinate steps in the plan if it lacks grounding."
+  },
+  "reranking": {
+    "Training the base model from scratch": "Reranking is a lightweight post-retrieval sorting step; it does not train models.",
+    "Changing Telegram settings": "Reranking is a search relevance step, unrelated to chatbot configurations.",
+    "Compressing GPU memory": "Rerankers process text inputs and do not optimize GPU memory layouts."
+  },
+  "hybrid-search": {
+    "Using two Telegram bots": "Hybrid search relates to document index lookups, not chatbot instances.",
+    "Mixing Python and SQL syntax randomly": "Hybrid search combines keyword and vector algorithms, not programming languages.",
+    "Deleting metadata filters": "Metadata filters are still crucial to scope hybrid search results."
+  },
+  "embedding-dimensions": {
+    "Telegram command names": "Vector dimensions are numeric widths, unrelated to chatbot commands.",
+    "Whether a model can use tools": "Tool capability is determined by prompts and code, not embedding sizes.",
+    "The user's streak": "User streaks are tracked in the database, independent of vector search spaces."
+  },
+  "vector-index-rebuild": {
+    "Every time a user clicks a button": "Rebuilding indexes is expensive and should only be done when data or metrics change.",
+    "Only when the model says hello": "Index maintenance is triggered by data updates, not model greeting tokens.",
+    "Never under any circumstances": "Index rebuilds are required when changing embedding dimensions or distance metrics."
+  },
+  "safety-evals": {
+    "Only benchmark speed": "Evaluations test behavioral safety and policy compliance, not hardware speeds.",
+    "Only GPU cost": "Safety checks evaluate outputs, not operational server hosting expenses.",
+    "Only UI colors": "Interface colors are design details, unrelated to model safety policies."
+  },
+  "red-teaming": {
+    "Painting the UI red": "Red-teaming is adversarial safety testing, not interface styling.",
+    "Compressing model weights": "Red-teaming tests model boundaries; it does not compress weights.",
+    "Sorting embeddings alphabetically": "Embeddings are numeric arrays and cannot be sorted alphabetically."
+  },
+  "calibration": {
+    "Centering text on screen": "Calibration refers to probability correctness, not page layouts.",
+    "Making all outputs short": "Calibration measures confidence accuracy, independent of text length.",
+    "Encrypting benchmark data": "Calibration is a statistical evaluation, not data security."
+  },
+  "latency-throughput": {
+    "Only accuracy matters": "Slow responses can ruin user experience even if the outputs are accurate.",
+    "Latency is never visible": "Latency is directly experienced by users as the delay before generation starts.",
+    "Throughput replaces safety": "Operational speed does not make safety filters less important."
+  },
+  "batching-inference": {
+    "To make outputs private by default": "Batching groups requests for efficiency; it does not encrypt or secure them.",
+    "To reduce all prompts to one token": "Batching does not shorten individual prompts or change their token count.",
+    "To skip tokenization": "All batched prompts must still be tokenized before model processing."
+  },
+  "kv-cache": {
+    "Saving user passwords": "KV cache stores intermediate attention states in RAM, not user credentials.",
+    "Training embeddings": "KV cache speeds up generation at query time; it is not used in training embeddings.",
+    "Replacing all context": "KV cache retains prior context attention keys; it does not replace the context window."
+  },
+  "attention-complexity": {
+    "It uses no matrix operations": "Attention relies heavily on large matrix multiplications.",
+    "It stores only one token": "Attention compares all tokens in the sequence pairwise, storing relations for all.",
+    "It cannot run on GPUs": "Attention is highly parallel and runs efficiently on GPUs, though memory demands are high."
+  },
+  "encoder-decoder": {
+    "Only storing embeddings": "Encoder-decoder models generate output sequences; they are not static embedding stores.",
+    "Only running Telegram bots": "Bots are software scripts; encoder-decoder is a model architecture.",
+    "Only replacing SQLite": "Encoder-decoder is a neural network model, not a relational database."
+  },
+  "decoder-only": {
+    "They cannot generate text": "Decoder-only models are the primary architecture used for text generation.",
+    "They require no pretraining": "Decoder-only models still require scale pretraining to learn language and logic.",
+    "They only classify images": "Decoder-only architectures are heavily optimized for natural language text."
+  },
+  "moe-models": {
+    "A group chat of human experts": "MoE is an algorithmic neural architecture, not a human discussion group.",
+    "A vector database table": "MoE directs token paths inside model layers; it is not a database search index.",
+    "A tokenizer with no vocabulary": "MoE models use standard tokenizers to map text inputs."
+  },
+  "catastrophic-forgetting": {
+    "Forgetting the API token": "Catastrophic forgetting affects model parameters, not application credentials.",
+    "Deleting the SQLite file": "SQLite deletions are database actions, unrelated to model parameter updates.",
+    "A vector index crash": "Vector index failures are database issues, not neural network alignment losses."
+  },
+  "eval-golden-set": {
+    "A model license type": "Golden sets are curated test sets, not legal distribution agreements.",
+    "A GPU benchmark only": "Golden sets evaluate model accuracy and behavior, not hardware compute speeds.",
+    "A prompt style with emojis": "Golden sets represent test cases, not conversational styles."
+  },
+  "leaderboard-overfit": {
+    "Using too little RAM": "Overfitting to leaderboards is a training evaluation bias, not a RAM limit.",
+    "Never submitting results": "Overfitting occurs because teams optimize specifically to submit higher scores.",
+    "Running local models": "Local model execution is an operational choice, unrelated to leaderboard bias."
+  },
+  "multimodal-safety": {
+    "Images cannot contain information": "Images contain visual data that models interpret, including adversarial instructions.",
+    "Audio is always safe": "Audio inputs can contain voice command injections or harmful sounds.",
+    "Multimodal models cannot use tools": "Multimodal agents can call tools based on visual and textual instructions."
+  },
+  "speech-models": {
+    "Only database indexing": "Speech models process audio signals, not database database rows.",
+    "Only vector compression": "Speech models transcribe or generate audio; they do not compress vectors.",
+    "Only code formatting": "Speech models deal with spoken sound waves, unrelated to code layout tools."
+  },
+  "study-review-priority": {
+    "Wrong answers should be deleted": "Wrong answers must be tracked to schedule them for review.",
+    "Only easy items should repeat": "Easy items should repeat less often to save user time for harder topics.",
+    "Review timing does not matter": "Review timing is critical to reinforce memory before forgetting occurs."
+  },
+  "weak-question-learned": {
+    "Immediately after one wrong answer": "One wrong answer identifies a weak question; it does not mark it learned.",
+    "Only after changing settings": "Seeding settings does not verify user knowledge of specific questions.",
+    "Never": "Questions are marked learned after repeated correct answers to keep the review pool focused."
+  }
+}
