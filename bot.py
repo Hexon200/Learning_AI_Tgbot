@@ -1068,10 +1068,40 @@ async def fallback_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await reply_long(update.message, t("buttons_only", lang), main_menu_for_lang(lang))
 
 
+import os
+import threading
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+
+class HealthCheckHandler(SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/":
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"OK")
+        else:
+            self.send_response(404)
+            self.end_headers()
+    def log_message(self, format, *args):
+        # Suppress logging health pings to stdout to avoid log cluttering
+        pass
+
+def run_health_server():
+    port = int(os.getenv("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    logger.info(f"Starting health check server on port {port}")
+    server.serve_forever()
+
+
 def main() -> None:
     if not TELEGRAM_BOT_TOKEN:
         print("Set TELEGRAM_BOT_TOKEN before running the bot.", file=sys.stderr)
         raise SystemExit(1)
+    
+    # Start health check server for Render in a daemon thread
+    thread = threading.Thread(target=run_health_server, daemon=True)
+    thread.start()
+
     init_db()
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
