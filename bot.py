@@ -775,11 +775,23 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         from urllib.parse import urlparse
         
         source_url = None
+        source_title = None
+        explanation_en = None
         exa_api_key = os.getenv("EXA_API_KEY")
         
         # User-Agent header required by Wikipedia to prevent 403 Forbidden errors
         wiki_headers = {
             "User-Agent": "AIQuizTelegramBot/1.0 (https://github.com/Hexon200/Learning_AI_Tgbot; contact@hexon.com) httpx/0.24"
+        }
+        
+        # Topic translation mapping for technical Wikipedia articles
+        TOPIC_MAPPINGS = {
+            "safety": "safety of artificial intelligence",
+            "attention": "attention (machine learning)",
+            "transformers": "transformer (machine learning)",
+            "embeddings": "vector embedding",
+            "rag": "retrieval-augmented generation",
+            "pretraining": "pre-training (machine learning)"
         }
         
         # 1. Try Exa Search if API key exists
@@ -801,48 +813,43 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                         results = res.json().get("results", [])
                         if results:
                             source_url = results[0].get("url")
+                            source_title = results[0].get("title", "Web Article")
             except Exception as e:
                 logger.warning(f"Exa search failed: {e}")
                 
         # 2. Wikipedia search fallback (Rate-limit resistant, no API key needed)
         if not source_url:
+            clean_topic = question_en['topic'].strip().lower()
+            
+            # Formulate sequential search candidates
+            search_queries = []
+            if clean_topic in TOPIC_MAPPINGS:
+                search_queries.append(TOPIC_MAPPINGS[clean_topic])
+            search_queries.append(f"{question_en['topic']} (machine learning)")
+            search_queries.append(f"{question_en['topic']} machine learning")
+            search_queries.append(f"{question_en['topic']} artificial intelligence")
+            search_queries.append(question_en['topic'])
+            search_queries.append(question_en['question'])
+            
             try:
-                # Use the question's technical topic for high-accuracy Wikipedia keyword matching
-                search_term = question_en['topic'] if len(question_en['topic']) > 2 else question_en['question']
-                params = {
-                    "action": "opensearch",
-                    "search": search_term,
-                    "limit": 1,
-                    "namespace": 0,
-                    "format": "json"
-                }
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    res = await client.get("https://en.wikipedia.org/w/api.php", params=params, headers=wiki_headers)
-                    if res.status_code == 200:
-                        res_data = res.json()
-                        if len(res_data) >= 4 and res_data[3]:
-                            source_url = res_data[3][0]
+                    for query in search_queries:
+                        params = {
+                            "action": "opensearch",
+                            "search": query,
+                            "limit": 1,
+                            "namespace": 0,
+                            "format": "json"
+                        }
+                        res = await client.get("https://en.wikipedia.org/w/api.php", params=params, headers=wiki_headers)
+                        if res.status_code == 200:
+                            res_data = res.json()
+                            if len(res_data) >= 4 and res_data[1]:
+                                source_title = res_data[1][0]
+                                source_url = res_data[3][0]
+                                break
             except Exception as e:
-                logger.warning(f"Wikipedia fallback search failed: {e}")
-                
-        # 3. Last resort: simple keyword Wikipedia search
-        if not source_url:
-            try:
-                params = {
-                    "action": "opensearch",
-                    "search": question_en['question'],
-                    "limit": 1,
-                    "namespace": 0,
-                    "format": "json"
-                }
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    res = await client.get("https://en.wikipedia.org/w/api.php", params=params, headers=wiki_headers)
-                    if res.status_code == 200:
-                        res_data = res.json()
-                        if len(res_data) >= 4 and res_data[3]:
-                            source_url = res_data[3][0]
-            except Exception as e:
-                logger.warning(f"Wikipedia fallback query search failed: {e}")
+                logger.warning(f"Wikipedia sequential search failed: {e}")
                 
         if not source_url:
             await status_msg.edit_text(
@@ -850,36 +857,56 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             )
             return
             
-        jina_url = f"https://r.jina.ai/{source_url}"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            headers = {"X-Return-Format": "text"}
-            response = await client.get(jina_url, headers=headers)
-            
-        if response.status_code != 200:
+        # 3. Fetch summary: Try Wikipedia REST Summary API first (very clean, no boilerplate)
+        if "wikipedia.org" in source_url and source_title:
+            try:
+                title_slug = source_title.replace(" ", "_")
+                summary_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{title_slug}"
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    res = await client.get(summary_url, headers=wiki_headers)
+                    if res.status_code == 200:
+                        extract = res.json().get("extract", "")
+                        if extract:
+                            explanation_en = extract
+            except Exception as e:
+                logger.warning(f"Wikipedia REST summary failed: {e}")
+                
+        # 4. Fallback to Jina Reader if summary API was not used or failed
+        if not explanation_en:
+            try:
+                jina_url = f"https://r.jina.ai/{source_url}"
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    headers = {"X-Return-Format": "text"}
+                    response = await client.get(jina_url, headers=headers)
+                    
+                if response.status_code == 200:
+                    raw_text = response.text
+                    clean_lines = []
+                    for line in raw_text.splitlines():
+                        line_str = line.strip()
+                        if not line_str:
+                            continue
+                        if len(line_str) < 20:
+                            continue
+                        if any(term in line_str.lower() for term in ["cookie", "privacy policy", "sign in", "subscribe", "menu", "search", "terms of service", "support"]):
+                            continue
+                        clean_lines.append(line_str)
+                    explanation_en = "\n\n".join(clean_lines[:10])
+            except Exception as e:
+                logger.warning(f"Jina scrape fallback failed: {e}")
+                
+        if not explanation_en:
             await status_msg.edit_text(
                 "⚠️ Failed to load the source page." if lang == "en" else "⚠️ Не удалось загрузить веб-страницу."
             )
             return
             
-        raw_text = response.text
-        clean_lines = []
-        for line in raw_text.splitlines():
-            line_str = line.strip()
-            if not line_str:
-                continue
-            if len(line_str) < 20:
-                continue
-            if any(term in line_str.lower() for term in ["cookie", "privacy policy", "sign in", "subscribe", "menu", "search", "terms of service", "support"]):
-                continue
-            clean_lines.append(line_str)
-            
-        clean_text = "\n\n".join(clean_lines[:10])
-        words = clean_text.split()
+        # Slice to 100 words
+        words = explanation_en.split()
         if len(words) > 100:
             explanation_en = " ".join(words[:100]) + "..."
-        else:
-            explanation_en = clean_text
             
+        # 5. Translate if Russian
         if lang == "ru":
             translator = GoogleTranslator(source="en", target="ru")
             explanation = translator.translate(explanation_en)
