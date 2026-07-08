@@ -766,12 +766,21 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await status_msg.edit_text("⚠️ Question not found / Вопрос не найден.")
             return
             
+        from quiz_engine import localize_question
+        # Localize to English for best technical search results
+        question_en = localize_question(question, "en") if question else question
+            
         import httpx
         from deep_translator import GoogleTranslator
         from urllib.parse import urlparse
         
         source_url = None
         exa_api_key = os.getenv("EXA_API_KEY")
+        
+        # User-Agent header required by Wikipedia to prevent 403 Forbidden errors
+        wiki_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         
         # 1. Try Exa Search if API key exists
         if exa_api_key:
@@ -782,7 +791,7 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     "x-api-key": exa_api_key
                 }
                 payload = {
-                    "query": question['question'],
+                    "query": question_en['question'],
                     "numResults": 1,
                     "useAutoprompt": True
                 }
@@ -799,7 +808,7 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if not source_url:
             try:
                 # Use the question's technical topic for high-accuracy Wikipedia keyword matching
-                search_term = question['topic'] if len(question['topic']) > 2 else question['question']
+                search_term = question_en['topic'] if len(question_en['topic']) > 2 else question_en['question']
                 params = {
                     "action": "opensearch",
                     "search": search_term,
@@ -808,7 +817,7 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     "format": "json"
                 }
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    res = await client.get("https://en.wikipedia.org/w/api.php", params=params)
+                    res = await client.get("https://en.wikipedia.org/w/api.php", params=params, headers=wiki_headers)
                     if res.status_code == 200:
                         res_data = res.json()
                         if len(res_data) >= 4 and res_data[3]:
@@ -821,13 +830,13 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             try:
                 params = {
                     "action": "opensearch",
-                    "search": question['question'],
+                    "search": question_en['question'],
                     "limit": 1,
                     "namespace": 0,
                     "format": "json"
                 }
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    res = await client.get("https://en.wikipedia.org/w/api.php", params=params)
+                    res = await client.get("https://en.wikipedia.org/w/api.php", params=params, headers=wiki_headers)
                     if res.status_code == 200:
                         res_data = res.json()
                         if len(res_data) >= 4 and res_data[3]:
