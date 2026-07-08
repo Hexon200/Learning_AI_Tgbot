@@ -147,7 +147,7 @@ def init_db() -> None:
                     question_ids_json TEXT NOT NULL,
                     current_index INTEGER NOT NULL DEFAULT 0,
                     score INTEGER NOT NULL DEFAULT 0,
-                    is_completed INTEGER NOT NULL DEFAULT 0,
+                    status VARCHAR(20) NOT NULL DEFAULT 'active',
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     completed_at TIMESTAMP
                 );
@@ -224,7 +224,7 @@ def init_db() -> None:
                     question_ids_json TEXT NOT NULL,
                     current_index INTEGER NOT NULL DEFAULT 0,
                     score INTEGER NOT NULL DEFAULT 0,
-                    is_completed INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'active',
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     completed_at TEXT
                 );
