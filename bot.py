@@ -766,18 +766,74 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await status_msg.edit_text("⚠️ Question not found / Вопрос не найден.")
             return
             
-        search_query = f"Explanation of: {question['question']}"
-        
-        from duckduckgo_search import DDGS
         import httpx
         from deep_translator import GoogleTranslator
         from urllib.parse import urlparse
         
         source_url = None
-        with DDGS() as ddgs:
-            results = list(ddgs.text(search_query, max_results=1))
-            if results:
-                source_url = results[0]['href']
+        exa_api_key = os.getenv("EXA_API_KEY")
+        
+        # 1. Try Exa Search if API key exists
+        if exa_api_key:
+            try:
+                headers = {
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                    "x-api-key": exa_api_key
+                }
+                payload = {
+                    "query": question['question'],
+                    "numResults": 1,
+                    "useAutoprompt": True
+                }
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    res = await client.post("https://api.exa.ai/search", json=payload, headers=headers)
+                    if res.status_code == 200:
+                        results = res.json().get("results", [])
+                        if results:
+                            source_url = results[0].get("url")
+            except Exception as e:
+                logger.warning(f"Exa search failed: {e}")
+                
+        # 2. Wikipedia search fallback (Rate-limit resistant, no API key needed)
+        if not source_url:
+            try:
+                # Use the question's technical topic for high-accuracy Wikipedia keyword matching
+                search_term = question['topic'] if len(question['topic']) > 2 else question['question']
+                params = {
+                    "action": "opensearch",
+                    "search": search_term,
+                    "limit": 1,
+                    "namespace": 0,
+                    "format": "json"
+                }
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    res = await client.get("https://en.wikipedia.org/w/api.php", params=params)
+                    if res.status_code == 200:
+                        res_data = res.json()
+                        if len(res_data) >= 4 and res_data[3]:
+                            source_url = res_data[3][0]
+            except Exception as e:
+                logger.warning(f"Wikipedia fallback search failed: {e}")
+                
+        # 3. Last resort: simple keyword Wikipedia search
+        if not source_url:
+            try:
+                params = {
+                    "action": "opensearch",
+                    "search": question['question'],
+                    "limit": 1,
+                    "namespace": 0,
+                    "format": "json"
+                }
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    res = await client.get("https://en.wikipedia.org/w/api.php", params=params)
+                    if res.status_code == 200:
+                        res_data = res.json()
+                        if len(res_data) >= 4 and res_data[3]:
+                            source_url = res_data[3][0]
+            except Exception as e:
+                logger.warning(f"Wikipedia fallback query search failed: {e}")
                 
         if not source_url:
             await status_msg.edit_text(
