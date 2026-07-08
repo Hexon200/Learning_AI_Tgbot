@@ -568,7 +568,7 @@ def create_session(telegram_id: int, question_ids: list[int], mode: str, session
         )
         cur = conn.execute(
             """
-            INSERT INTO quiz_sessions (telegram_id, mode, session_type, question_ids_json)
+            INSERT INTO quiz_sessions (telegram_id, session_mode, session_type, question_ids_json)
             VALUES (?, ?, ?, ?)
             """,
             (telegram_id, mode, session_type, json.dumps(question_ids)),
