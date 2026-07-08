@@ -865,10 +865,10 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    for query in search_queries:
+                    for q in search_queries:
                         params = {
                             "action": "opensearch",
-                            "search": query,
+                            "search": q,
                             "limit": 1,
                             "namespace": 0,
                             "format": "json"
@@ -883,7 +883,7 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                                 # Validate keyword overlap to prevent funny/incorrect biography matches
                                 match_keywords = get_clean_keywords(candidate_title)
                                 if not combined_keywords.intersection(match_keywords):
-                                    logger.info(f"Skipping mismatched result: {candidate_title} for query: {query}")
+                                    logger.info(f"Skipping mismatched result: {candidate_title} for query: {q}")
                                     continue
                                     
                                 source_title = candidate_title
