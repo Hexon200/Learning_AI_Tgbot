@@ -900,7 +900,19 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                                 
                                 # Validate keyword overlap to prevent funny/incorrect biography matches
                                 match_keywords = get_clean_keywords(candidate_title)
-                                if not combined_keywords.intersection(match_keywords):
+                                has_overlap = False
+                                for kw in combined_keywords:
+                                    for mw in match_keywords:
+                                        if (kw in mw or mw in kw) and (len(kw) > 3 or len(mw) > 3):
+                                            has_overlap = True
+                                            break
+                                        if kw == mw:
+                                            has_overlap = True
+                                            break
+                                    if has_overlap:
+                                        break
+                                        
+                                if not has_overlap:
                                     logger.info(f"Skipping mismatched result: {candidate_title} for query: {q}")
                                     continue
                                     
