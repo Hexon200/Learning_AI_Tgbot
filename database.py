@@ -555,7 +555,7 @@ def update_setting(telegram_id: int, key: str, value: str) -> None:
         column = "difficulty"
     with get_db() as conn:
         conn.execute(
-            f"UPDATE user_settings SET {column} = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?",
+            f"UPDATE user_settings SET {column} = ? WHERE telegram_id = ?",
             (value, telegram_id),
         )
 
