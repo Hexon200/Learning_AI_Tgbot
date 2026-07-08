@@ -858,8 +858,41 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             
             clean_topic = question_en['topic'].strip().lower()
             
+            # Scan question for known technical AI/ML terms to find precise matches first
+            TECHNICAL_TERMS = [
+                "cosine similarity", "dot product", "euclidean distance",
+                "attention mechanism", "self-attention", "multi-head attention",
+                "backpropagation", "gradient descent", "chain rule",
+                "retrieval-augmented generation", "rag", "vector database",
+                "word embedding", "vector embedding", "embeddings",
+                "reinforcement learning", "rlhf", "dpo",
+                "transformer", "encoder", "decoder",
+                "temperature", "top-p", "top-k",
+                "quantization", "fine-tuning", "lora", "qlora",
+                "prompt engineering", "few-shot learning", "zero-shot learning",
+                "in-context learning", "context window",
+                "hallucination", "alignment", "bias", "overfitting",
+                "parent-child chunking", "sentence-window chunking"
+            ]
+            
+            matched_terms = []
+            question_lower = question_en['question'].lower()
+            for term in TECHNICAL_TERMS:
+                if term in question_lower:
+                    matched_terms.append(term)
+            matched_terms.sort(key=len, reverse=True)
+            
             # Formulate sequential search candidates
             search_queries = []
+            
+            # 1. Start with matching technical terms for highly specific Wikipedia routing
+            for term in matched_terms:
+                search_queries.append(f"{term} (machine learning)")
+                search_queries.append(f"{term} machine learning")
+                search_queries.append(f"{term} artificial intelligence")
+                search_queries.append(term)
+                
+            # 2. General topic mappings and fallback topics
             if clean_topic in TOPIC_MAPPINGS:
                 search_queries.append(TOPIC_MAPPINGS[clean_topic])
             search_queries.append(f"{question_en['topic']} (machine learning)")
@@ -868,7 +901,7 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             search_queries.append(question_en['topic'])
             search_queries.append(question_en['question'])
             
-            # Append fallback path title if configured
+            # 3. Path-level fallbacks if all specific searches fail
             q_mode = question_en.get("mode")
             if q_mode in PATH_FALLBACK_TITLES:
                 search_queries.append(PATH_FALLBACK_TITLES[q_mode])
