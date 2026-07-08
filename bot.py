@@ -819,6 +819,26 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 
         # 2. Wikipedia search fallback (Rate-limit resistant, no API key needed)
         if not source_url:
+            import re
+            
+            def get_clean_keywords(text: str) -> set[str]:
+                words = re.findall(r'[a-zA-Z0-9]+', text.lower())
+                stop_words = {"what", "is", "why", "how", "do", "does", "the", "a", "an", "of", "in", "on", "with", "or", "and", "to", "for", "at", "by", "from", "basics"}
+                return set(words) - stop_words
+                
+            PATH_FALLBACK_TITLES = {
+                "transformer_basics": "Transformer (machine learning)",
+                "rag_basics": "Retrieval-augmented generation",
+                "rag_lesson_1": "Retrieval-augmented generation",
+                "rag_lesson_2": "Retrieval-augmented generation",
+                "rag_lesson_3": "Retrieval-augmented generation",
+                "ai_agents_basics": "Intelligent agent",
+                "coding_agents": "Intelligent agent",
+                "model_evaluation": "Evaluation of machine learning models",
+                "local_llms": "Large language model",
+                "deep_learning": "Deep learning"
+            }
+            
             clean_topic = question_en['topic'].strip().lower()
             
             # Formulate sequential search candidates
@@ -830,6 +850,19 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             search_queries.append(f"{question_en['topic']} artificial intelligence")
             search_queries.append(question_en['topic'])
             search_queries.append(question_en['question'])
+            
+            # Append fallback path title if configured
+            q_mode = question_en.get("mode")
+            if q_mode in PATH_FALLBACK_TITLES:
+                search_queries.append(PATH_FALLBACK_TITLES[q_mode])
+                
+            # Prepare keywords to validate relevance
+            query_keywords = get_clean_keywords(question_en['question'])
+            topic_keywords = get_clean_keywords(question_en['topic'])
+            combined_keywords = query_keywords.union(topic_keywords)
+            # Add fallback title keywords so fallback results are accepted
+            if q_mode in PATH_FALLBACK_TITLES:
+                combined_keywords = combined_keywords.union(get_clean_keywords(PATH_FALLBACK_TITLES[q_mode]))
             
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
@@ -845,8 +878,17 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                         if res.status_code == 200:
                             res_data = res.json()
                             if len(res_data) >= 4 and res_data[1]:
-                                source_title = res_data[1][0]
-                                source_url = res_data[3][0]
+                                candidate_title = res_data[1][0]
+                                candidate_url = res_data[3][0]
+                                
+                                # Validate keyword overlap to prevent funny/incorrect biography matches
+                                match_keywords = get_clean_keywords(candidate_title)
+                                if not combined_keywords.intersection(match_keywords):
+                                    logger.info(f"Skipping mismatched result: {candidate_title} for query: {query}")
+                                    continue
+                                    
+                                source_title = candidate_title
+                                source_url = candidate_url
                                 break
             except Exception as e:
                 logger.warning(f"Wikipedia sequential search failed: {e}")
