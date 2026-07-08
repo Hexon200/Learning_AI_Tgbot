@@ -779,7 +779,7 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         
         # User-Agent header required by Wikipedia to prevent 403 Forbidden errors
         wiki_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "AIQuizTelegramBot/1.0 (https://github.com/Hexon200/Learning_AI_Tgbot; contact@hexon.com) httpx/0.24"
         }
         
         # 1. Try Exa Search if API key exists
