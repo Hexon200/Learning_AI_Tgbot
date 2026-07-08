@@ -385,6 +385,7 @@ def answer_keyboard(question: dict, lang: str = "en") -> InlineKeyboardMarkup:
 
 def after_answer_keyboard(question_id: int, has_next: bool = True, is_bookmarked: bool = False, lang: str = "en", show_glossary: bool = False) -> InlineKeyboardMarkup:
     bookmark_label = f"✅ {t('bookmark_question', lang)}" if is_bookmarked else t("bookmark_question", lang)
+    deep_dive_label = "🔍 Deep Dive" if lang == "en" else "🔍 Подробнее"
     first_row = [
         InlineKeyboardButton(t("why_not", lang), callback_data=f"why:{question_id}"),
     ]
@@ -393,7 +394,10 @@ def after_answer_keyboard(question_id: int, has_next: bool = True, is_bookmarked
         first_row.append(InlineKeyboardButton(define_label, callback_data=f"def_terms:{question_id}"))
     rows = [
         first_row,
-        [InlineKeyboardButton(bookmark_label, callback_data=f"bookmark:{question_id}")],
+        [
+            InlineKeyboardButton(bookmark_label, callback_data=f"bookmark:{question_id}"),
+            InlineKeyboardButton(deep_dive_label, callback_data=f"deep_dive:{question_id}")
+        ],
     ]
     rows.append([InlineKeyboardButton(t("next_question", lang) if has_next else t("see_results", lang), callback_data="next")])
     return InlineKeyboardMarkup(rows)
@@ -738,17 +742,118 @@ async def send_or_edit(
         await reply_long(update.message, text, reply_markup, parse_mode=parse_mode)
 
 
+async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    data = query.data or ""
+    question_id = int(data.split(":")[1])
+    
+    telegram_id = query.from_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    
+    loading_text = "🔍 Searching the web..." if lang == "en" else "🔍 Ищу подробности в интернете..."
+    await query.answer(loading_text)
+    
+    status_text = "🔍 Searching the web... / Ищу в интернете..." if lang == "en" else "🔍 Ищу подробности в интернете..."
+    status_msg = await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=status_text,
+        reply_to_message_id=query.message.message_id
+    )
+    
+    try:
+        question = get_question(question_id)
+        if not question:
+            await status_msg.edit_text("⚠️ Question not found / Вопрос не найден.")
+            return
+            
+        search_query = f"Explanation of: {question['question']}"
+        
+        from duckduckgo_search import DDGS
+        import httpx
+        from deep_translator import GoogleTranslator
+        from urllib.parse import urlparse
+        
+        source_url = None
+        with DDGS() as ddgs:
+            results = list(ddgs.text(search_query, max_results=1))
+            if results:
+                source_url = results[0]['href']
+                
+        if not source_url:
+            await status_msg.edit_text(
+                "⚠️ Could not find any relevant web sources." if lang == "en" else "⚠️ Не удалось найти подходящие веб-источники."
+            )
+            return
+            
+        jina_url = f"https://r.jina.ai/{source_url}"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {"X-Return-Format": "text"}
+            response = await client.get(jina_url, headers=headers)
+            
+        if response.status_code != 200:
+            await status_msg.edit_text(
+                "⚠️ Failed to load the source page." if lang == "en" else "⚠️ Не удалось загрузить веб-страницу."
+            )
+            return
+            
+        raw_text = response.text
+        clean_lines = []
+        for line in raw_text.splitlines():
+            line_str = line.strip()
+            if not line_str:
+                continue
+            if len(line_str) < 20:
+                continue
+            if any(term in line_str.lower() for term in ["cookie", "privacy policy", "sign in", "subscribe", "menu", "search", "terms of service", "support"]):
+                continue
+            clean_lines.append(line_str)
+            
+        clean_text = "\n\n".join(clean_lines[:10])
+        words = clean_text.split()
+        if len(words) > 100:
+            explanation_en = " ".join(words[:100]) + "..."
+        else:
+            explanation_en = clean_text
+            
+        if lang == "ru":
+            translator = GoogleTranslator(source="en", target="ru")
+            explanation = translator.translate(explanation_en)
+        else:
+            explanation = explanation_en
+            
+        domain = urlparse(source_url).netloc
+        title_label = "📖 <b>Web Explanation:</b>" if lang == "en" else "📖 <b>Подробное объяснение из сети:</b>"
+        source_label = "Source" if lang == "en" else "Источник"
+        
+        explanation_safe = html.escape(explanation)
+        final_text = (
+            f"{title_label}\n\n"
+            f"{explanation_safe}\n\n"
+            f"🔗 {source_label}: <a href=\"{source_url}\">{domain}</a>"
+        )
+        
+        await status_msg.edit_text(final_text, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.exception("Deep Dive failed")
+        await status_msg.edit_text(
+            "⚠️ An error occurred while retrieving the explanation." if lang == "en" else "⚠️ Произошла ошибка при получении объяснения."
+        )
+
+
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     data = query.data or ""
-    if data and not data.startswith("def_terms:"):
+    if data and not data.startswith("def_terms:") and not data.startswith("deep_dive:"):
         await query.answer()
     ensure_user(query.from_user)
     lang = _get_lang_from_update(update)
     try:
         if data == "noop":
             return
-        if data == "menu":
+        elif data.startswith("deep_dive:"):
+            await handle_deep_dive(update, context)
+        elif data == "menu":
             await show_main_menu(update, query.from_user.id)
         elif data.startswith("choose_lang:"):
             value = data.split(":", 1)[1]
