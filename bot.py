@@ -635,12 +635,30 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, ques
         await send_or_edit(update, t("no_active_weak", lang), main_menu_for_lang(lang))
         return
     ids = json.loads(session["question_ids_json"])
-    expected_id = ids[session["current_index"]] if session["current_index"] < len(ids) else None
-    if expected_id != question_id:
-        await query.answer(t("stale_question", lang), show_alert=True)
-        return
-    is_correct = selected_index == question["answer_index"]
-    record_answer(session["id"], telegram_id, question_id, selected_index, is_correct)
+    
+    # Check if this question has already been answered in the active session
+    from database import get_db
+    with get_db() as conn:
+        existing_answer = conn.execute(
+            "SELECT selected_index FROM answers WHERE session_id = ? AND question_id = ?",
+            (session["id"], question_id)
+        ).fetchone()
+        
+    is_already_answered = existing_answer is not None
+    
+    if is_already_answered:
+        # Use the already recorded answer index
+        selected_index = existing_answer["selected_index"]
+        is_correct = selected_index == question["answer_index"]
+    else:
+        # Validate that this is the expected active question
+        expected_id = ids[session["current_index"]] if session["current_index"] < len(ids) else None
+        if expected_id != question_id:
+            await query.answer(t("stale_question", lang), show_alert=True)
+            return
+        is_correct = selected_index == question["answer_index"]
+        record_answer(session["id"], telegram_id, question_id, selected_index, is_correct)
+        
     updated = get_active_session(telegram_id)
     has_next = bool(updated and updated["current_index"] < len(ids))
     
