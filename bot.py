@@ -860,6 +860,7 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             
             # Scan question for known technical AI/ML terms to find precise matches first
             TECHNICAL_TERMS = [
+                # Existing terms
                 "cosine similarity", "dot product", "euclidean distance",
                 "attention mechanism", "self-attention", "multi-head attention",
                 "backpropagation", "gradient descent", "chain rule",
@@ -872,7 +873,21 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 "prompt engineering", "few-shot learning", "zero-shot learning",
                 "in-context learning", "context window",
                 "hallucination", "alignment", "bias", "overfitting",
-                "parent-child chunking", "sentence-window chunking"
+                "parent-child chunking", "sentence-window chunking",
+                
+                # Newly scanned terms
+                "expert systems", "turing test", "imagenet", "alexnet",
+                "foundation model", "neural scaling laws", "tokenizer",
+                "instruction tuning", "mixture of experts", "mixture-of-experts",
+                "mixture of agents", "mixture-of-agents", "approximate nearest neighbor",
+                "ann search", "held-out evaluation data", "benchmark contamination",
+                "mmlu", "swe-bench", "lost in the middle", "prompt injection",
+                "jailbreak", "open-weight models", "model distillation",
+                "multimodal model", "vision-language model", "coding agent",
+                "beam search", "function calling", "reranker", "hybrid search",
+                "red-teaming", "model calibration", "latency", "throughput",
+                "batch requests", "kv cache", "encoder-decoder", "decoder-only",
+                "activation function", "hidden layers", "weighted sum", "partial derivative"
             ]
             
             matched_terms = []
