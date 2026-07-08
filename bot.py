@@ -383,7 +383,7 @@ def answer_keyboard(question: dict, lang: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def after_answer_keyboard(question_id: int, has_next: bool = True, is_bookmarked: bool = False, lang: str = "en", show_glossary: bool = False) -> InlineKeyboardMarkup:
+def after_answer_keyboard(question_id: int, selected_index: int, has_next: bool = True, is_bookmarked: bool = False, lang: str = "en", show_glossary: bool = False) -> InlineKeyboardMarkup:
     bookmark_label = f"✅ {t('bookmark_question', lang)}" if is_bookmarked else t("bookmark_question", lang)
     deep_dive_label = "🔍 Deep Dive" if lang == "en" else "🔍 Подробнее"
     first_row = [
@@ -396,7 +396,7 @@ def after_answer_keyboard(question_id: int, has_next: bool = True, is_bookmarked
         first_row,
         [
             InlineKeyboardButton(bookmark_label, callback_data=f"bookmark:{question_id}"),
-            InlineKeyboardButton(deep_dive_label, callback_data=f"deep_dive:{question_id}")
+            InlineKeyboardButton(deep_dive_label, callback_data=f"deep_dive:{question_id}:{selected_index}")
         ],
     ]
     rows.append([InlineKeyboardButton(t("next_question", lang) if has_next else t("see_results", lang), callback_data="next")])
@@ -666,6 +666,7 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, ques
         text, 
         after_answer_keyboard(
             question_id, 
+            selected_index,
             has_next=has_next, 
             is_bookmarked=is_bookmarked(telegram_id, question_id), 
             lang=lang, 
@@ -745,7 +746,9 @@ async def send_or_edit(
 async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     data = query.data or ""
-    question_id = int(data.split(":")[1])
+    parts = data.split(":")
+    question_id = int(parts[1])
+    selected_index = int(parts[2])
     
     telegram_id = query.from_user.id
     lang = get_settings(telegram_id).get("language", "en")
@@ -754,16 +757,12 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.answer(loading_text)
     
     status_text = "🔍 Searching the web... / Ищу в интернете..." if lang == "en" else "🔍 Ищу подробности в интернете..."
-    status_msg = await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        text=status_text,
-        reply_to_message_id=query.message.message_id
-    )
+    await query.edit_message_text(text=status_text, parse_mode=ParseMode.HTML)
     
     try:
         question = get_question(question_id)
         if not question:
-            await status_msg.edit_text("⚠️ Question not found / Вопрос не найден.")
+            await query.edit_message_text("⚠️ Question not found / Вопрос не найден.", parse_mode=ParseMode.HTML)
             return
             
         from quiz_engine import localize_question
@@ -894,8 +893,9 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 logger.warning(f"Wikipedia sequential search failed: {e}")
                 
         if not source_url:
-            await status_msg.edit_text(
-                "⚠️ Could not find any relevant web sources." if lang == "en" else "⚠️ Не удалось найти подходящие веб-источники."
+            await query.edit_message_text(
+                "⚠️ Could not find any relevant web sources." if lang == "en" else "⚠️ Не удалось найти подходящие веб-источники.",
+                parse_mode=ParseMode.HTML
             )
             return
             
@@ -938,8 +938,9 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 logger.warning(f"Jina scrape fallback failed: {e}")
                 
         if not explanation_en:
-            await status_msg.edit_text(
-                "⚠️ Failed to load the source page." if lang == "en" else "⚠️ Не удалось загрузить веб-страницу."
+            await query.edit_message_text(
+                "⚠️ Failed to load the source page." if lang == "en" else "⚠️ Не удалось загрузить веб-страницу.",
+                parse_mode=ParseMode.HTML
             )
             return
             
@@ -966,12 +967,18 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"🔗 {source_label}: <a href=\"{source_url}\">{domain}</a>"
         )
         
-        await status_msg.edit_text(final_text, parse_mode=ParseMode.HTML)
+        back_label = "⬅️ Back / Назад" if lang == "en" else "⬅️ Назад"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(back_label, callback_data=f"back_to_ans:{question_id}:{selected_index}")]
+        ])
+        
+        await query.edit_message_text(final_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
         
     except Exception as e:
         logger.exception("Deep Dive failed")
-        await status_msg.edit_text(
-            "⚠️ An error occurred while retrieving the explanation." if lang == "en" else "⚠️ Произошла ошибка при получении объяснения."
+        await query.edit_message_text(
+            "⚠️ An error occurred while retrieving the explanation." if lang == "en" else "⚠️ Произошла ошибка при получении объяснения.",
+            parse_mode=ParseMode.HTML
         )
 
 
@@ -987,6 +994,11 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
         elif data.startswith("deep_dive:"):
             await handle_deep_dive(update, context)
+        elif data.startswith("back_to_ans:"):
+            parts = data.split(":")
+            q_id = int(parts[1])
+            sel_idx = int(parts[2])
+            await handle_answer(update, context, q_id, sel_idx)
         elif data == "menu":
             await show_main_menu(update, query.from_user.id)
         elif data.startswith("choose_lang:"):
