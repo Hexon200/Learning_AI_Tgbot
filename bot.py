@@ -57,8 +57,8 @@ TRANSLATIONS = {
         "ru": "Добро пожаловать в викторину по AI и LLM.\n\nПрактикуйтесь в трансформерах, RAG, агентах, оценке, безопасности, локальных моделях, мультимодальном AI и кодирующих агентах.",
     },
     "help_text": {
-        "en": "Commands:\n/start - open the main menu\n/stats - see your score, streak, and topic mastery\n/settings - choose difficulty and question mode\n/daily - start today's challenge\n/cancel - stop the active quiz\n/help - show this help",
-        "ru": "Команды:\n/start - открыть главное меню\n/stats - посмотреть очки, серию и освоение тем\n/settings - выбрать сложность и режим вопросов\n/daily - начать ежедневный вызов\n/cancel - остановить текущую викторину\n/help - показать справку",
+        "en": "Commands:\n/start - open the main menu\n/stats - see your score, streak, and topic mastery\n/settings - choose difficulty and question mode\n/news - get daily AI news digest\n/cancel - stop the active quiz\n/help - show this help",
+        "ru": "Команды:\n/start - открыть главное меню\n/stats - посмотреть очки, серию и освоение тем\n/settings - выбрать сложность и режим вопросов\n/news - получить дайджест новостей ИИ\n/cancel - остановить текущую викторину\n/help - показать справку",
     },
     "cancelled": {"en": "Cancelled the active quiz.", "ru": "Активная викторина отменена."},
     "choose_learning_path": {"en": "Choose a learning path.", "ru": "Выберите учебный путь."},
@@ -80,7 +80,8 @@ TRANSLATIONS = {
     "start_quiz": {"en": "Start 20-question quiz", "ru": "Начать викторину из 20 вопросов"},
     "review_wrong": {"en": "Review wrong answers", "ru": "Повторить неверные ответы"},
     "stats": {"en": "Stats", "ru": "Статистика"},
-    "daily": {"en": "Daily challenge", "ru": "Ежедневный вызов"},
+    "news": {"en": "📰 AI News Digest", "ru": "📰 Новости ИИ"},
+    "fetching_news": {"en": "📰 Fetching today's AI news...", "ru": "📰 Загружаю сегодняшние новости ИИ..."},
     "leaderboard": {"en": "Leaderboard", "ru": "Таблица лидеров"},
     "learning_paths": {"en": "Learning paths", "ru": "Учебные пути"},
     "export_weak": {"en": "Export weak topics", "ru": "Экспорт слабых тем"},
@@ -311,7 +312,7 @@ def main_menu_for_lang(lang: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(t("settings_title", lang), callback_data="settings"),
             ],
             [
-                InlineKeyboardButton(t("daily", lang), callback_data="daily"),
+                InlineKeyboardButton(t("news", lang), callback_data="news"),
                 InlineKeyboardButton(t("leaderboard", lang), callback_data="leaderboard"),
             ],
             [InlineKeyboardButton(t("learning_paths", lang), callback_data="learning_paths")],
@@ -362,9 +363,196 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await reply_long(update.message, format_settings(update.effective_user.id, lang), settings_keyboard(update.effective_user.id))
 
 
-async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+# Keywords to identify AI-related posts on Hacker News
+AI_KEYWORDS = {
+    "ai", "llm", "llama", "gpu", "deep learning", "machine learning", 
+    "transformers", "embeddings", "agent", "rag", "fine-tune", "lora", 
+    "quantization", "qlora", "vllm", "claude", "gpt", "openai", "gemini",
+    "mistral", "cohere", "diffusion", "stable diffusion", "midjourney",
+    "model", "models", "deepseek", "anthropic", "neural", "speech", "voice",
+    "vision", "robot", "robots", "robotics", "dataset", "datasets", "training",
+    "inference"
+}
+
+def is_ai_related(title: str) -> bool:
+    import re
+    clean_title = re.sub(r'[^a-zA-Z0-9\s]', '', title.lower())
+    words = set(clean_title.split())
+    return any(any(kw in w for w in words) for kw in AI_KEYWORDS)
+
+async def fetch_hacker_news() -> list[dict]:
+    import httpx
+    news_items = []
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get("https://hacker-news.firebaseio.com/v0/topstories.json")
+            if res.status_code == 200:
+                story_ids = res.json()[:30]  # Check top 30 stories
+                for sid in story_ids:
+                    item_res = await client.get(f"https://hacker-news.firebaseio.com/v0/item/{sid}.json")
+                    if item_res.status_code == 200:
+                        item = item_res.json()
+                        title = item.get("title", "")
+                        url = item.get("url") or f"https://news.ycombinator.com/item?id={sid}"
+                        score = item.get("score", 0)
+                        
+                        if is_ai_related(title):
+                            news_items.append({
+                                "title": title,
+                                "url": url,
+                                "score": score,
+                                "source": "Hacker News"
+                            })
+    except Exception as e:
+        logger.warning(f"Hacker News fetch failed: {e}")
+    news_items.sort(key=lambda x: x["score"], reverse=True)
+    return news_items[:2]
+
+async def fetch_hf_papers() -> list[dict]:
+    import httpx
+    news_items = []
+    try:
+        url = "https://huggingface.co/api/daily_papers"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(url, headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                for item in data[:10]: # Look at top 10 trending papers
+                    paper = item.get("paper", {})
+                    title = paper.get("title", "")
+                    upvotes = paper.get("upvotes", 0)
+                    pid = paper.get("id", "")
+                    p_url = f"https://huggingface.co/papers/{pid}"
+                    
+                    news_items.append({
+                        "title": title,
+                        "url": p_url,
+                        "score": upvotes,
+                        "source": "Hugging Face"
+                    })
+    except Exception as e:
+        logger.warning(f"HF Papers fetch failed: {e}")
+    news_items.sort(key=lambda x: x["score"], reverse=True)
+    return news_items[:2]
+
+async def fetch_reddit_rss(subreddit: str) -> list[dict]:
+    import httpx
+    import xml.etree.ElementTree as ET
+    news_items = []
+    try:
+        url = f"https://www.reddit.com/r/{subreddit}/hot/.rss"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.get(url, headers=headers)
+            if res.status_code == 200:
+                root = ET.fromstring(res.text)
+                ns = {'atom': 'http://www.w3.org/2005/Atom'}
+                entries = root.findall('atom:entry', ns)
+                
+                for entry in entries:
+                    title_node = entry.find('atom:title', ns)
+                    link_node = entry.find('atom:link', ns)
+                    
+                    title = title_node.text if title_node is not None else ""
+                    href = link_node.attrib.get('href') if link_node is not None else f"https://www.reddit.com/r/{subreddit}/"
+                    
+                    # Skip pinned posts
+                    if any(term in title.lower() for term in ["discussion", "pinned", "weekly", "welcome"]):
+                        continue
+                        
+                    news_items.append({
+                        "title": title,
+                        "url": href,
+                        "score": 100,
+                        "source": f"r/{subreddit}"
+                    })
+    except Exception as e:
+        logger.warning(f"Reddit r/{subreddit} RSS fetch failed: {e}")
+    return news_items[:2]
+
+async def generate_news_digest(lang: str = "en") -> str:
+    import asyncio
+    from deep_translator import GoogleTranslator
+    from datetime import datetime, timezone
+    
+    hn_task = fetch_hacker_news()
+    hf_task = fetch_hf_papers()
+    llama_task = fetch_reddit_rss("LocalLLaMA")
+    ml_task = fetch_reddit_rss("MachineLearning")
+    
+    hn_items, hf_items, llama_items, ml_items = await asyncio.gather(hn_task, hf_task, llama_task, ml_task)
+    all_items = hn_items + hf_items + llama_items + ml_items
+    
+    if not all_items:
+        return "⚠️ No trending AI news found in the last 24 hours." if lang == "en" else "⚠️ Не найдено трендовых новостей ИИ за последние 24 часа."
+        
+    digest_lines = []
+    title_label = "📰 <b>Daily AI News Digest</b>" if lang == "en" else "📰 <b>Ежедневный дайджест новостей ИИ</b>"
+    digest_lines.append(title_label)
+    digest_lines.append(f"Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}\n")
+    
+    # Take top 5 items
+    for i, item in enumerate(all_items[:5], start=1):
+        title = item["title"]
+        source = item["source"]
+        url = item["url"]
+        
+        if lang == "ru":
+            try:
+                translator = GoogleTranslator(source="en", target="ru")
+                title = translator.translate(title)
+            except Exception:
+                pass
+                
+        title_safe = html.escape(title)
+        digest_lines.append(f"{i}. <b>{title_safe}</b>")
+        digest_lines.append(f"   Source: <a href=\"{url}\">{source}</a>\n")
+        
+    return "\n".join(digest_lines)
+
+async def handle_news(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    telegram_id = query.from_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    
+    await query.answer("📰 Loading news digest...")
+    await query.edit_message_text(text=t("fetching_news", lang), parse_mode=ParseMode.HTML)
+    
+    try:
+        digest = await generate_news_digest(lang)
+        
+        back_label = "⬅️ Back / Назад" if lang == "en" else "⬅️ Назад"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(back_label, callback_data="menu")]
+        ])
+        
+        await query.edit_message_text(digest, reply_markup=keyboard, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    except Exception as e:
+        logger.exception("News Digest generation failed")
+        back_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Back / Назад" if lang == "en" else "⬅️ Назад", callback_data="menu")]
+        ])
+        await query.edit_message_text(
+            "⚠️ Failed to load news digest." if lang == "en" else "⚠️ Не удалось загрузить дайджест новостей.",
+            reply_markup=back_keyboard,
+            parse_mode=ParseMode.HTML
+        )
+
+async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     ensure_user(update.effective_user)
-    await begin_quiz(update, update.effective_user.id, "daily")
+    telegram_id = update.effective_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    
+    status_msg = await update.message.reply_text("📰 Loading news digest...")
+    try:
+        digest = await generate_news_digest(lang)
+        await status_msg.edit_text(digest, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    except Exception as e:
+        logger.exception("News digest command failed")
+        await status_msg.edit_text("⚠️ Failed to load news digest." if lang == "en" else "⚠️ Не удалось загрузить дайджест новостей.")
 
 
 def answer_keyboard(question: dict, lang: str = "en") -> InlineKeyboardMarkup:
@@ -1088,8 +1276,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await show_main_menu(update, query.from_user.id)
         elif data == "start_quiz":
             await begin_quiz(update, query.from_user.id, "quiz")
-        elif data == "daily":
-            await begin_quiz(update, query.from_user.id, "daily")
+        elif data == "news":
+            await handle_news(update, context)
         elif data == "learning_paths":
             await send_or_edit(update, t("choose_learning_path", lang), learning_paths_keyboard(lang))
         elif data.startswith("path:"):
@@ -1446,7 +1634,7 @@ def main() -> None:
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("settings", settings_command))
-    app.add_handler(CommandHandler("daily", daily_command))
+    app.add_handler(CommandHandler("news", news_command))
     app.add_handler(CallbackQueryHandler(callback_router))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, fallback_message))
     logger.info("Bot started")
