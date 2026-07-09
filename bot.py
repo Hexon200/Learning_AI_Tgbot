@@ -423,32 +423,37 @@ async def fetch_hacker_news() -> list[dict]:
     news_items.sort(key=lambda x: x["score"], reverse=True)
     return news_items[:3]
 
-async def fetch_hf_papers() -> list[dict]:
+async def fetch_venturebeat() -> list[dict]:
     import httpx
+    import xml.etree.ElementTree as ET
     news_items = []
     try:
-        url = "https://huggingface.co/api/daily_papers"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        url = "https://venturebeat.com/category/ai/feed/"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         async with httpx.AsyncClient(timeout=10.0) as client:
-            res = await client.get(url, headers=headers)
+            res = await client.get(url, headers=headers, follow_redirects=True)
             if res.status_code == 200:
-                data = res.json()
-                for item in data[:10]: # Look at top 10 trending papers
-                    paper = item.get("paper", {})
-                    title = paper.get("title", "")
-                    upvotes = paper.get("upvotes", 0)
-                    pid = paper.get("id", "")
-                    p_url = f"https://huggingface.co/papers/{pid}"
-                    
-                    news_items.append({
-                        "title": title,
-                        "url": p_url,
-                        "score": upvotes,
-                        "source": "Hugging Face"
-                    })
+                root = ET.fromstring(res.text)
+                channel = root.find('channel')
+                if channel is not None:
+                    items = channel.findall('item')
+                    for item in items[:10]: # Look at top 10 articles
+                        title_node = item.find('title')
+                        link_node = item.find('link')
+                        
+                        title = title_node.text if title_node is not None else ""
+                        href = link_node.text if link_node is not None else "https://venturebeat.com/category/ai/"
+                        
+                        news_items.append({
+                            "title": title,
+                            "url": href,
+                            "score": 100,  # Default score for sorting
+                            "source": "VentureBeat"
+                        })
     except Exception as e:
-        logger.warning(f"HF Papers fetch failed: {e}")
-    news_items.sort(key=lambda x: x["score"], reverse=True)
+        logger.warning(f"VentureBeat fetch failed: {e}")
     return news_items[:3]
 
 async def fetch_reddit_rss(subreddit: str) -> list[dict]:
@@ -494,12 +499,12 @@ async def generate_news_digest(lang: str = "en") -> str:
     from datetime import datetime, timezone
     
     hn_task = fetch_hacker_news()
-    hf_task = fetch_hf_papers()
+    vb_task = fetch_venturebeat()
     llama_task = fetch_reddit_rss("LocalLLaMA")
     ml_task = fetch_reddit_rss("MachineLearning")
     
-    hn_items, hf_items, llama_items, ml_items = await asyncio.gather(hn_task, hf_task, llama_task, ml_task)
-    all_items = hn_items + hf_items + llama_items + ml_items
+    hn_items, vb_items, llama_items, ml_items = await asyncio.gather(hn_task, vb_task, llama_task, ml_task)
+    all_items = hn_items + vb_items + llama_items + ml_items
     
     if not all_items:
         return "⚠️ No trending AI news found in the last 24 hours." if lang == "en" else "⚠️ Не найдено трендовых новостей ИИ за последние 24 часа."
