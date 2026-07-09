@@ -305,6 +305,7 @@ async def reply_long(message, text: str, reply_markup: InlineKeyboardMarkup | No
 
 def main_menu_for_lang(lang: str) -> InlineKeyboardMarkup:
     test_yourself_label = "📝 Test Yourself" if lang == "en" else "📝 Проверить себя"
+    duel_label = "⚔️ Duel Arena" if lang == "en" else "⚔️ Дуэль-Арена"
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton(t("start_quiz", lang), callback_data="start_quiz")],
@@ -321,7 +322,10 @@ def main_menu_for_lang(lang: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(t("news", lang), callback_data="news"),
                 InlineKeyboardButton(t("leaderboard", lang), callback_data="leaderboard"),
             ],
-            [InlineKeyboardButton(t("learning_paths", lang), callback_data="learning_paths")],
+            [
+                InlineKeyboardButton(t("learning_paths", lang), callback_data="learning_paths"),
+                InlineKeyboardButton(duel_label, callback_data="duel_arena"),
+            ],
         ]
     )
 
@@ -329,6 +333,13 @@ def main_menu_for_lang(lang: str) -> InlineKeyboardMarkup:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user:
         ensure_user(update.effective_user)
+        
+    # Check for deep links (e.g. /start duel_XYZ)
+    if context.args and context.args[0].startswith("duel_"):
+        duel_id = context.args[0]
+        await handle_join_duel(update, context, duel_id)
+        return
+        
     text = f"{t('language_prompt', 'en')}\n{t('language_prompt', 'ru')}"
     if update.message:
         await update.message.reply_text(text, reply_markup=language_keyboard())
@@ -371,6 +382,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 tutor_sessions = {}
 interview_sessions = {}
+duel_sessions = {}
 
 SYSTEM_DESIGN_CHALLENGES = [
     {
@@ -724,6 +736,349 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception as e:
         logger.exception("News digest command failed")
         await status_msg.edit_text("⚠️ Failed to load news digest." if lang == "en" else "⚠️ Не удалось загрузить дайджест новостей.")
+
+
+def select_random_duel_questions() -> list[int]:
+    with get_db() as conn:
+        rows = conn.execute("SELECT id FROM questions ORDER BY RANDOM() LIMIT 5").fetchall()
+        return [r["id"] for r in rows]
+
+
+async def handle_create_duel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    telegram_id = query.from_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    await query.answer()
+    
+    import uuid
+    duel_id = f"duel_{uuid.uuid4().hex[:8]}"
+    
+    # Select 5 random question IDs
+    question_ids = select_random_duel_questions()
+    if not question_ids or len(question_ids) < 5:
+        await query.edit_message_text(
+            "⚠️ Not enough questions in the database to start a duel." if lang == "en" else "⚠️ В базе данных недостаточно вопросов для дуэли."
+        )
+        return
+        
+    bot_info = await context.bot.get_me()
+    bot_username = bot_info.username
+    duel_link = f"https://t.me/{bot_username}?start={duel_id}"
+    
+    duel_sessions[duel_id] = {
+        "creator_id": telegram_id,
+        "creator_name": query.from_user.first_name or query.from_user.username or "Player A",
+        "joined_id": None,
+        "joined_name": None,
+        "question_ids": question_ids,
+        "creator_answers": [],
+        "joined_answers": [],
+        "status": "waiting",
+        "current_index": {telegram_id: 0},
+        "start_time": {telegram_id: None},
+        "lang": lang
+    }
+    
+    share_text = (
+        "⚔️ Challenge me to an AI Quiz Duel! Let's see who is smarter!"
+        if lang == "en" else
+        "⚔️ Прими мой вызов на дуэль в AI-викторине! Проверим, кто умнее!"
+    )
+    import urllib.parse
+    share_url = f"https://t.me/share/url?url={urllib.parse.quote(duel_link)}&text={urllib.parse.quote(share_text)}"
+    
+    welcome_text = (
+        "⚔️ <b>AI Duel Arena</b>\n\n"
+        "Invite a friend to a real-time AI Quiz Duel!\n\n"
+        "<b>Share this invitation link with your opponent:</b>\n"
+        f"<code>{duel_link}</code>\n\n"
+        "Once they click the link and start the bot, the duel will automatically begin. You will both answer the same 5 questions. The fastest player with the most correct answers wins!"
+        if lang == "en" else
+        "⚔️ <b>Дуэль-Арена</b>\n\n"
+        "Пригласите друга на дуэль в реальном времени!\n\n"
+        "<b>Отправьте эту ссылку-приглашение вашему оппоненту:</b>\n"
+        f"<code>{duel_link}</code>\n\n"
+        "Как только он нажмет на ссылку и запустит бота, дуэль автоматически начнется. Вы оба будете отвечать на одни и те же 5 вопросов. Победит тот, кто ответит правильнее и быстрее!"
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔗 Invite / Поделиться" if lang == "en" else "🔗 Пригласить друга", url=share_url)],
+        [InlineKeyboardButton("❌ Cancel / Отмена" if lang == "en" else "❌ Отмена", callback_data=f"cancel_created_duel:{duel_id}")]
+    ])
+    
+    await query.edit_message_text(welcome_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+
+async def handle_join_duel(update: Update, context: ContextTypes.DEFAULT_TYPE, duel_id: str) -> None:
+    telegram_id = update.effective_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    
+    session = duel_sessions.get(duel_id)
+    if not session:
+        await update.message.reply_text(
+            "⚠️ This duel link is expired or invalid." if lang == "en" else "⚠️ Эта ссылка на дуэль устарела или недействительна."
+        )
+        return
+        
+    if session["status"] != "waiting":
+        await update.message.reply_text(
+            "⚠️ This duel has already started or completed." if lang == "en" else "⚠️ Эта дуэль уже началась или завершилась."
+        )
+        return
+        
+    if session["creator_id"] == telegram_id:
+        await update.message.reply_text(
+            "⚠️ You cannot challenge yourself!" if lang == "en" else "⚠️ Вы не можете вызвать на дуэль самого себя!"
+        )
+        return
+        
+    # Join the duel
+    session["joined_id"] = telegram_id
+    session["joined_name"] = update.effective_user.first_name or update.effective_user.username or "Player B"
+    session["status"] = "active"
+    session["current_index"][telegram_id] = 0
+    session["start_time"][telegram_id] = None
+    session["start_time"][session["creator_id"]] = None
+    
+    # Notify creator
+    creator_lang = session["lang"]
+    creator_msg = (
+        f"⚔️ <b>Duel Accepted!</b>\n\nYour challenge was accepted by <b>{session['joined_name']}</b>! The duel starts now!"
+        if creator_lang == "en" else
+        f"⚔️ <b>Вызов принят!</b>\n\nВаш вызов принят игроком <b>{session['joined_name']}</b>! Дуэль начинается!"
+    )
+    try:
+        await context.bot.send_message(chat_id=session["creator_id"], text=creator_msg, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+        
+    # Send the first question to both players
+    await send_duel_question(context, session["creator_id"], duel_id)
+    await send_duel_question(context, telegram_id, duel_id)
+
+
+async def send_duel_question(context: ContextTypes.DEFAULT_TYPE, user_id: int, duel_id: str) -> None:
+    session = duel_sessions.get(duel_id)
+    if not session:
+        return
+        
+    idx = session["current_index"][user_id]
+    question_id = session["question_ids"][idx]
+    
+    question = get_question(question_id)
+    if not question:
+        return
+        
+    lang = get_settings(user_id).get("language", "en")
+    try:
+        from quiz_engine import localize_question
+        question = localize_question(question, lang)
+    except Exception:
+        pass
+        
+    # Record question start time
+    import time
+    session["start_time"][user_id] = time.time()
+    
+    # Format message text
+    text = (
+        f"⚔️ <b>AI Duel — Question {idx + 1}/5</b>\n\n"
+        f"Topic: <b>{topic_label(question['topic'], lang)}</b>\n"
+        f"Difficulty: <b>{difficulty_label(question['difficulty'], lang)}</b>\n\n"
+        f"{question['question']}"
+        if lang == "en" else
+        f"⚔️ <b>AI Дуэль — Вопрос {idx + 1}/5</b>\n\n"
+        f"Тема: <b>{topic_label(question['topic'], lang)}</b>\n"
+        f"Сложность: <b>{difficulty_label(question['difficulty'], lang)}</b>\n\n"
+        f"{question['question']}"
+    )
+    
+    # Generate keyboard
+    letters = ["A", "B", "C", "D", "E", "F"]
+    buttons = []
+    for option_idx, option in enumerate(question["options"]):
+        letter = letters[option_idx] if option_idx < len(letters) else str(option_idx + 1)
+        buttons.append([InlineKeyboardButton(f"{letter}: {option}", callback_data=f"duel_ans:{duel_id}:{option_idx}")])
+        
+    reply_markup = InlineKeyboardMarkup(buttons)
+    
+    await context.bot.send_message(chat_id=user_id, text=text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def handle_duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    user_id = query.from_user.id
+    lang = get_settings(user_id).get("language", "en")
+    
+    parts = query.data.split(":")
+    duel_id = parts[1]
+    selected_idx = int(parts[2])
+    
+    session = duel_sessions.get(duel_id)
+    if not session:
+        await query.answer("⚠️ This duel session has expired." if lang == "en" else "⚠️ Эта дуэль закончилась или истекла.", show_alert=True)
+        return
+        
+    if session["status"] != "active":
+        await query.answer("⚠️ This duel is no longer active." if lang == "en" else "⚠️ Эта дуэль больше не активна.", show_alert=True)
+        return
+        
+    await query.answer()
+    
+    import time
+    end_time = time.time()
+    start_time = session["start_time"].get(user_id) or end_time
+    duration = end_time - start_time
+    
+    idx = session["current_index"][user_id]
+    question_id = session["question_ids"][idx]
+    
+    question = get_question(question_id)
+    if not question:
+        return
+        
+    is_correct = bool(selected_idx == question["answer_index"])
+    
+    # Record answer
+    record = {
+        "question_id": question_id,
+        "is_correct": is_correct,
+        "time_taken": duration
+    }
+    
+    if user_id == session["creator_id"]:
+        session["creator_answers"].append(record)
+    else:
+        session["joined_answers"].append(record)
+        
+    # Increment question index
+    session["current_index"][user_id] += 1
+    
+    # Clean up inline buttons from the answered question
+    letters = ["A", "B", "C", "D", "E", "F"]
+    correct_letter = letters[question["answer_index"]] if question["answer_index"] < len(letters) else str(question["answer_index"] + 1)
+    chosen_letter = letters[selected_idx] if selected_idx < len(letters) else str(selected_idx + 1)
+    
+    feedback = (
+        f"✅ Correct! Chosen: <b>{chosen_letter}</b>" if is_correct else f"❌ Incorrect! Chosen: <b>{chosen_letter}</b> (Correct: <b>{correct_letter}</b>)"
+        if lang == "en" else
+        f"✅ Верно! Выбрано: <b>{chosen_letter}</b>" if is_correct else f"❌ Неверно! Выбрано: <b>{chosen_letter}</b> (Правильно: <b>{correct_letter}</b>)"
+    )
+    
+    await query.edit_message_text(f"{query.message.text}\n\n{feedback}", parse_mode=ParseMode.HTML)
+    
+    # Check if this player has finished all questions
+    if session["current_index"][user_id] < 5:
+        await send_duel_question(context, user_id, duel_id)
+    else:
+        # Player finished
+        finished_text = (
+            "🏁 <b>You finished the duel!</b>\n\nWaiting for your opponent to complete their questions..."
+            if lang == "en" else
+            "🏁 <b>Вы завершили дуэль!</b>\n\nОжидаем, пока ваш соперник ответит на свои вопросы..."
+        )
+        await context.bot.send_message(chat_id=user_id, text=finished_text, parse_mode=ParseMode.HTML)
+        
+        # Check if BOTH players are finished
+        creator_finished = len(session["creator_answers"]) >= 5
+        joined_finished = len(session["joined_answers"]) >= 5
+        
+        if creator_finished and joined_finished:
+            await complete_duel(context, duel_id)
+
+
+async def complete_duel(context: ContextTypes.DEFAULT_TYPE, duel_id: str) -> None:
+    session = duel_sessions.pop(duel_id, None)
+    if not session:
+        return
+        
+    creator_id = session["creator_id"]
+    joined_id = session["joined_id"]
+    
+    creator_correct = sum(1 for a in session["creator_answers"] if a["is_correct"])
+    joined_correct = sum(1 for a in session["joined_answers"] if a["is_correct"])
+    
+    creator_time = sum(a["time_taken"] for a in session["creator_answers"])
+    joined_time = sum(a["time_taken"] for a in session["joined_answers"])
+    
+    # Determine winner
+    if creator_correct > joined_correct:
+        winner_id = creator_id
+        winner_name = session["creator_name"]
+    elif joined_correct > creator_correct:
+        winner_id = joined_id
+        winner_name = session["joined_name"]
+    else:
+        # Tie-breaker: fastest time
+        if creator_time < joined_time:
+            winner_id = creator_id
+            winner_name = session["creator_name"]
+        else:
+            winner_id = joined_id
+            winner_name = session["joined_name"]
+            
+    # Award points to winner in the database!
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """
+                UPDATE users
+                SET current_streak = current_streak + 1,
+                    longest_streak = CASE WHEN current_streak + 1 > longest_streak THEN current_streak + 1 ELSE longest_streak END
+                WHERE telegram_id = ?
+                """,
+                (winner_id,)
+            )
+    except Exception as e:
+        logger.warning(f"Failed to award duel points: {e}")
+        
+    # Broadcast results to creator
+    creator_lang = session["lang"]
+    creator_results = (
+        f"🏁 <b>Duel Completed!</b>\n\n"
+        f"👑 <b>Winner:</b> {winner_name}!\n\n"
+        f"📊 <b>Scoreboard:</b>\n"
+        f"• <b>{session['creator_name']}</b>: {creator_correct}/5 correct (Time: {creator_time:.1f}s)\n"
+        f"• <b>{session['joined_name']}</b>: {joined_correct}/5 correct (Time: {joined_time:.1f}s)\n\n"
+        f"🏆 {winner_name} gets +1 streak point!"
+        if creator_lang == "en" else
+        f"🏁 <b>Дуэль завершена!</b>\n\n"
+        f"👑 <b>Победитель:</b> {winner_name}!\n\n"
+        f"📊 <b>Таблица результатов:</b>\n"
+        f"• <b>{session['creator_name']}</b>: {creator_correct}/5 верных (Время: {creator_time:.1f}с)\n"
+        f"• <b>{session['joined_name']}</b>: {joined_correct}/5 верных (Время: {joined_time:.1f}с)\n\n"
+        f"🏆 {winner_name} получает +1 очко серии!"
+    )
+    
+    # Broadcast results to joined opponent
+    joined_lang = get_settings(joined_id).get("language", "en")
+    joined_results = (
+        f"🏁 <b>Duel Completed!</b>\n\n"
+        f"👑 <b>Winner:</b> {winner_name}!\n\n"
+        f"📊 <b>Scoreboard:</b>\n"
+        f"• <b>{session['creator_name']}</b>: {creator_correct}/5 correct (Time: {creator_time:.1f}s)\n"
+        f"• <b>{session['joined_name']}</b>: {joined_correct}/5 correct (Time: {joined_time:.1f}s)\n\n"
+        f"🏆 {winner_name} gets +1 streak point!"
+        if joined_lang == "en" else
+        f"🏁 <b>Дуэль завершена!</b>\n\n"
+        f"👑 <b>Победитель:</b> {winner_name}!\n\n"
+        f"📊 <b>Таблица результатов:</b>\n"
+        f"• <b>{session['creator_name']}</b>: {creator_correct}/5 верных (Время: {creator_time:.1f}с)\n"
+        f"• <b>{session['joined_name']}</b>: {joined_correct}/5 верных (Время: {joined_time:.1f}с)\n\n"
+        f"🏆 {winner_name} получает +1 очко серии!"
+    )
+    
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Main Menu / Меню", callback_data="menu")]])
+    
+    try:
+        await context.bot.send_message(chat_id=creator_id, text=creator_results, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+        
+    try:
+        await context.bot.send_message(chat_id=joined_id, text=joined_results, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
 
 
 async def handle_test_yourself(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1808,6 +2163,14 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         elif data == "exit_interview":
             interview_sessions.pop(query.from_user.id, None)
             await show_main_menu(update, query.from_user.id)
+        elif data == "duel_arena":
+            await handle_create_duel(update, context)
+        elif data.startswith("cancel_created_duel:"):
+            duel_id = data.split(":")[1]
+            duel_sessions.pop(duel_id, None)
+            await show_main_menu(update, query.from_user.id)
+        elif data.startswith("duel_ans:"):
+            await handle_duel_answer(update, context)
         elif data == "news":
             await handle_news(update, context)
         elif data == "learning_paths":
