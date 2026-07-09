@@ -777,10 +777,15 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     status_text = "🔍 Searching the web... / Ищу в интернете..." if lang == "en" else "🔍 Ищу подробности в интернете..."
     await query.edit_message_text(text=status_text, parse_mode=ParseMode.HTML)
     
+    back_label = "⬅️ Back / Назад" if lang == "en" else "⬅️ Назад"
+    back_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(back_label, callback_data=f"back_to_ans:{question_id}:{selected_index}")]
+    ])
+    
     try:
         question = get_question(question_id)
         if not question:
-            await query.edit_message_text("⚠️ Question not found / Вопрос не найден.", parse_mode=ParseMode.HTML)
+            await query.edit_message_text("⚠️ Question not found / Вопрос не найден.", reply_markup=back_keyboard, parse_mode=ParseMode.HTML)
             return
             
         from quiz_engine import localize_question
@@ -973,6 +978,7 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if not source_url:
             await query.edit_message_text(
                 "⚠️ Could not find any relevant web sources." if lang == "en" else "⚠️ Не удалось найти подходящие веб-источники.",
+                reply_markup=back_keyboard,
                 parse_mode=ParseMode.HTML
             )
             return
@@ -1018,6 +1024,7 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if not explanation_en:
             await query.edit_message_text(
                 "⚠️ Failed to load the source page." if lang == "en" else "⚠️ Не удалось загрузить веб-страницу.",
+                reply_markup=back_keyboard,
                 parse_mode=ParseMode.HTML
             )
             return
@@ -1045,17 +1052,13 @@ async def handle_deep_dive(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"🔗 {source_label}: <a href=\"{source_url}\">{domain}</a>"
         )
         
-        back_label = "⬅️ Back / Назад" if lang == "en" else "⬅️ Назад"
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(back_label, callback_data=f"back_to_ans:{question_id}:{selected_index}")]
-        ])
-        
-        await query.edit_message_text(final_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        await query.edit_message_text(final_text, reply_markup=back_keyboard, parse_mode=ParseMode.HTML)
         
     except Exception as e:
         logger.exception("Deep Dive failed")
         await query.edit_message_text(
             "⚠️ An error occurred while retrieving the explanation." if lang == "en" else "⚠️ Произошла ошибка при получении объяснения.",
+            reply_markup=back_keyboard,
             parse_mode=ParseMode.HTML
         )
 
