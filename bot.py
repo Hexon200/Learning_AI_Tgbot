@@ -421,7 +421,7 @@ async def fetch_hacker_news() -> list[dict]:
     except Exception as e:
         logger.warning(f"Hacker News fetch failed: {e}")
     news_items.sort(key=lambda x: x["score"], reverse=True)
-    return news_items[:2]
+    return news_items[:3]
 
 async def fetch_hf_papers() -> list[dict]:
     import httpx
@@ -449,7 +449,7 @@ async def fetch_hf_papers() -> list[dict]:
     except Exception as e:
         logger.warning(f"HF Papers fetch failed: {e}")
     news_items.sort(key=lambda x: x["score"], reverse=True)
-    return news_items[:2]
+    return news_items[:3]
 
 async def fetch_reddit_rss(subreddit: str) -> list[dict]:
     import httpx
@@ -486,7 +486,7 @@ async def fetch_reddit_rss(subreddit: str) -> list[dict]:
                     })
     except Exception as e:
         logger.warning(f"Reddit r/{subreddit} RSS fetch failed: {e}")
-    return news_items[:2]
+    return news_items[:3]
 
 async def generate_news_digest(lang: str = "en") -> str:
     import asyncio
@@ -509,8 +509,8 @@ async def generate_news_digest(lang: str = "en") -> str:
     digest_lines.append(title_label)
     digest_lines.append(f"Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}\n")
     
-    # Take top 5 items
-    for i, item in enumerate(all_items[:5], start=1):
+    # Take top 10 items
+    for i, item in enumerate(all_items[:10], start=1):
         title = item["title"]
         source = item["source"]
         url = item["url"]
