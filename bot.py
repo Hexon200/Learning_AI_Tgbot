@@ -367,6 +367,9 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await reply_long(update.message, format_settings(update.effective_user.id, lang), settings_keyboard(update.effective_user.id))
 
 
+tutor_sessions = {}
+
+
 # Keywords to identify AI-related posts on Hacker News
 EXACT_KEYWORDS = {"ai", "llm", "rag", "dpo", "gpu", "lora", "rlhf", "vllm"}
 SUBSTRING_KEYWORDS = {
@@ -701,6 +704,103 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await status_msg.edit_text("⚠️ Failed to load news digest." if lang == "en" else "⚠️ Не удалось загрузить дайджест новостей.")
 
 
+async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE, question_id: int, selected_index: int) -> None:
+    query = update.callback_query
+    telegram_id = query.from_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    
+    question = get_question(question_id)
+    if not question:
+        await query.answer("⚠️ Question not found / Вопрос не найден.", show_alert=True)
+        return
+        
+    try:
+        from quiz_engine import localize_question
+        question = localize_question(question, lang)
+    except Exception:
+        pass
+        
+    await query.answer()
+    
+    # Initialize the tutor chat session history
+    tutor_sessions[telegram_id] = {
+        "question_id": question_id,
+        "selected_index": selected_index,
+        "history": [
+            {"role": "system", "content": (
+                "You are an expert AI and LLM tutor. You are helping a developer study for a certification/quiz. "
+                "Here is the question they are currently studying:\n"
+                f"Question: {question['question']}\n"
+                f"Options:\n" + "\n".join(f"- {opt}" for opt in question['options']) + "\n"
+                f"Correct Answer: {question['options'][question['answer_index']]}\n"
+                f"Explanation: {question['explanation']}\n\n"
+                "Provide clear, concise, and highly educational answers. Focus on code examples, deep concepts, "
+                "and comparisons where appropriate. Keep answers under 200 words if possible. Answer in English "
+                "if the user's question is in English, otherwise answer in Russian."
+            )}
+        ]
+    }
+    
+    welcome_text = (
+        "🤖 <b>AI Tutor Chat Mode</b>\n\n"
+        "Ask me any questions about this topic! I will explain concepts, show code examples, and clarify details.\n\n"
+        "Type your question below, or click <b>Cancel</b> to return to the quiz."
+        if lang == "en" else
+        "🤖 <b>Чат с ИИ-Тьютором</b>\n\n"
+        "Задайте мне любые вопросы по этой теме! Я объясню концепции, покажу примеры кода и отвечу на ваши вопросы.\n\n"
+        "Напишите ваш вопрос ниже или нажмите <b>Отмена</b>, чтобы вернуться к викторине."
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Cancel / Отмена" if lang == "en" else "❌ Отмена", callback_data=f"cancel_tutor:{question_id}:{selected_index}")]
+    ])
+    
+    await query.edit_message_text(welcome_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+
+async def handle_tutor_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    import httpx
+    telegram_id = update.effective_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    session = tutor_sessions.get(telegram_id)
+    if not session:
+        return
+        
+    user_text = update.message.text
+    session["history"].append({"role": "user", "content": user_text})
+    
+    # Send typing status indicator
+    await context.bot.send_chat_action(chat_id=telegram_id, action="typing")
+    
+    try:
+        url = "https://text.pollinations.ai/"
+        payload = {
+            "messages": session["history"],
+            "model": "openai"
+        }
+        async with httpx.AsyncClient(timeout=35.0) as client:
+            res = await client.post(url, json=payload)
+            if res.status_code == 200:
+                ai_response = res.text
+            else:
+                ai_response = "⚠️ Failed to get a response from the AI tutor. Please try again." if lang == "en" else "⚠️ Не удалось получить ответ от ИИ-тьютора. Пожалуйста, попробуйте еще раз."
+    except Exception as e:
+        logger.error(f"Pollinations AI request failed: {e}")
+        ai_response = "⚠️ An error occurred while contacting the AI tutor." if lang == "en" else "⚠️ Произошла ошибка при связи с ИИ-тьютором."
+        
+    session["history"].append({"role": "assistant", "content": ai_response})
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Cancel / Отмена" if lang == "en" else "❌ Отмена", callback_data=f"cancel_tutor:{session['question_id']}:{session['selected_index']}")]
+    ])
+    
+    try:
+        await update.message.reply_text(ai_response, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+    except Exception:
+        # Fallback to plain text if Markdown format triggers Telegram parsing errors
+        await update.message.reply_text(ai_response, reply_markup=keyboard, disable_web_page_preview=True)
+
+
 async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     ensure_user(update.effective_user)
     telegram_id = update.effective_user.id
@@ -844,6 +944,7 @@ def answer_keyboard(question: dict, lang: str = "en") -> InlineKeyboardMarkup:
 def after_answer_keyboard(question_id: int, selected_index: int, has_next: bool = True, is_bookmarked: bool = False, lang: str = "en", show_glossary: bool = False) -> InlineKeyboardMarkup:
     bookmark_label = f"✅ {t('bookmark_question', lang)}" if is_bookmarked else t("bookmark_question", lang)
     deep_dive_label = "🔍 Deep Dive" if lang == "en" else "🔍 Подробнее"
+    tutor_label = "💬 Ask AI Tutor" if lang == "en" else "💬 Спросить ИИ-Тьютора"
     first_row = [
         InlineKeyboardButton(t("why_not", lang), callback_data=f"why:{question_id}"),
     ]
@@ -853,8 +954,11 @@ def after_answer_keyboard(question_id: int, selected_index: int, has_next: bool 
     rows = [
         first_row,
         [
-            InlineKeyboardButton(bookmark_label, callback_data=f"bookmark:{question_id}"),
+            InlineKeyboardButton(bookmark_label, callback_data=f"bookmark:{question_id}:{selected_index}"),
             InlineKeyboardButton(deep_dive_label, callback_data=f"deep_dive:{question_id}:{selected_index}")
+        ],
+        [
+            InlineKeyboardButton(tutor_label, callback_data=f"ask_tutor:{question_id}:{selected_index}")
         ],
     ]
     rows.append([InlineKeyboardButton(t("next_question", lang) if has_next else t("see_results", lang), callback_data="next")])
@@ -1538,6 +1642,17 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             q_id = int(parts[1])
             sel_idx = int(parts[2])
             await handle_answer(update, context, q_id, sel_idx)
+        elif data.startswith("ask_tutor:"):
+            parts = data.split(":")
+            q_id = int(parts[1])
+            sel_idx = int(parts[2])
+            await handle_ask_tutor(update, context, q_id, sel_idx)
+        elif data.startswith("cancel_tutor:"):
+            parts = data.split(":")
+            q_id = int(parts[1])
+            sel_idx = int(parts[2])
+            tutor_sessions.pop(query.from_user.id, None)
+            await handle_answer(update, context, q_id, sel_idx)
         elif data == "menu":
             await show_main_menu(update, query.from_user.id)
         elif data.startswith("choose_lang:"):
@@ -1706,12 +1821,13 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 await query.answer(t("explain_more", lang), show_alert=False)
                 await reply_long(query.message, explanation)
         elif data.startswith("why:"):
-            question_id = int(data.split(":", 1)[1])
+            parts = data.split(":")
+            question_id = int(parts[1])
+            selected_index = int(parts[2]) if len(parts) > 2 else None
             question = get_question(question_id)
             lang = _get_lang_from_update(update)
             try:
                 from quiz_engine import localize_question
-
                 question = localize_question(question, lang) if question else question
             except Exception:
                 pass
@@ -1728,22 +1844,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             why_text = "\n\n".join(lines)
             
             telegram_id = query.from_user.id
-            selected_index = None
             is_correct = False
-            with get_db() as conn:
-                row = conn.execute(
-                    """
-                    SELECT selected_index, is_correct 
-                    FROM answers 
-                    WHERE telegram_id = ? AND question_id = ?
-                    ORDER BY id DESC LIMIT 1
-                    """,
-                    (telegram_id, question_id)
-                ).fetchone()
-                if row:
-                    selected_index = row["selected_index"]
-                    is_correct = bool(row["is_correct"])
-
+            
             if selected_index is not None:
                 letters = ["A", "B", "C", "D", "E", "F"]
                 correct_letter = letters[question["answer_index"]] if question["answer_index"] < len(letters) else str(question["answer_index"] + 1)
@@ -1771,8 +1873,10 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             is_bookmarked_val = is_bookmarked(telegram_id, question_id)
             bookmark_label = f"✅ {t('bookmark_question', lang)}" if is_bookmarked_val else t("bookmark_question", lang)
+            tutor_label = "💬 Ask AI Tutor" if lang == "en" else "💬 Спросить ИИ-Тьютора"
             rows = [
-                [InlineKeyboardButton(bookmark_label, callback_data=f"bookmark:{question_id}")],
+                [InlineKeyboardButton(bookmark_label, callback_data=f"bookmark:{question_id}:{selected_index}")],
+                [InlineKeyboardButton(tutor_label, callback_data=f"ask_tutor:{question_id}:{selected_index}")],
             ]
             rows.append([InlineKeyboardButton(t("next_question", lang) if has_next else t("see_results", lang), callback_data="next")])
             reply_markup = InlineKeyboardMarkup(rows)
@@ -1789,7 +1893,9 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.answer()
         elif data.startswith("bookmark:"):
             telegram_id = query.from_user.id
-            question_id = int(data.split(":", 1)[1])
+            parts = data.split(":")
+            question_id = int(parts[1])
+            selected_index = int(parts[2])
             saved = toggle_bookmark(telegram_id, question_id)
             await query.answer(t("bookmarked", lang) if saved else t("bookmark_removed", lang), show_alert=False)
             
@@ -1802,6 +1908,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.edit_message_reply_markup(
                 reply_markup=after_answer_keyboard(
                     question_id, 
+                    selected_index,
                     has_next=has_next, 
                     is_bookmarked=saved, 
                     lang=lang
@@ -1855,6 +1962,11 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def fallback_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user:
         ensure_user(update.effective_user)
+        telegram_id = update.effective_user.id
+        if telegram_id in tutor_sessions:
+            await handle_tutor_message(update, context)
+            return
+            
     lang = _get_lang_from_update(update)
     await reply_long(update.message, t("buttons_only", lang), main_menu_for_lang(lang))
 
