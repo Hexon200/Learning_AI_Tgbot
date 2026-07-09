@@ -782,6 +782,18 @@ async def handle_tutor_message(update: Update, context: ContextTypes.DEFAULT_TYP
             res = await client.post(url, json=payload)
             if res.status_code == 200:
                 ai_response = res.text
+                
+                # Clean pollinations ad footer if present
+                for ad_marker in ["Support Pollinations.AI", "🌸 Ad 🌸", "Powered by Pollinations.AI"]:
+                    if ad_marker in ai_response:
+                        ai_response = ai_response.split(ad_marker)[0].strip()
+                
+                # Strip trailing Markdown dividers and whitespace
+                while ai_response.endswith("---") or ai_response.endswith("\n") or ai_response.endswith(" "):
+                    if ai_response.endswith("---"):
+                        ai_response = ai_response[:-3].strip()
+                    else:
+                        ai_response = ai_response.strip()
             else:
                 ai_response = "⚠️ Failed to get a response from the AI tutor. Please try again." if lang == "en" else "⚠️ Не удалось получить ответ от ИИ-тьютора. Пожалуйста, попробуйте еще раз."
     except Exception as e:
