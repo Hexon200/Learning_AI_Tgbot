@@ -48,3 +48,14 @@ config.pyc
 # Operating System files
 .DS_Store
 Thumbs.db
+
+# Workspace metadata & local configs
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md
+openclaw-workspace-state.json
+flag_guessing_bot/
+skills/agent-reach/
