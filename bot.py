@@ -880,29 +880,36 @@ async def send_duel_question(context: ContextTypes.DEFAULT_TYPE, user_id: int, d
     import time
     session["start_time"][user_id] = time.time()
     
-    # Format message text
-    text = (
-        f"⚔️ <b>AI Duel — Question {idx + 1}/5</b>\n\n"
-        f"Topic: <b>{topic_label(question['topic'], lang)}</b>\n"
-        f"Difficulty: <b>{difficulty_label(question['difficulty'], lang)}</b>\n\n"
-        f"{question['question']}"
-        if lang == "en" else
-        f"⚔️ <b>AI Дуэль — Вопрос {idx + 1}/5</b>\n\n"
-        f"Тема: <b>{topic_label(question['topic'], lang)}</b>\n"
-        f"Сложность: <b>{difficulty_label(question['difficulty'], lang)}</b>\n\n"
-        f"{question['question']}"
-    )
-    
-    # Generate keyboard
+    # Format options string
     letters = ["A", "B", "C", "D", "E", "F"]
-    buttons = []
+    options_text = []
     for option_idx, option in enumerate(question["options"]):
         letter = letters[option_idx] if option_idx < len(letters) else str(option_idx + 1)
-        buttons.append([InlineKeyboardButton(f"{letter}: {option}", callback_data=f"duel_ans:{duel_id}:{option_idx}")])
-        
-    reply_markup = InlineKeyboardMarkup(buttons)
+        options_text.append(f"*{letter}*: {option}")
+    options_str = "\n".join(options_text)
     
-    await context.bot.send_message(chat_id=user_id, text=text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    # Format message text (using clean Markdown)
+    text = (
+        f"⚔️ *AI Duel — Question {idx + 1}/5*\n"
+        f"{t('topic_label', lang)}: {topic_label(question['topic'], lang)} | "
+        f"{t('difficulty_label', lang)}: {difficulty_label(question['difficulty'], lang)}\n\n"
+        f"{question['question']}\n\n"
+        f"{options_str}"
+    )
+    
+    # Generate keyboard with letter buttons in rows of 2
+    buttons = []
+    for option_idx in range(len(question["options"])):
+        letter = letters[option_idx] if option_idx < len(letters) else str(option_idx + 1)
+        buttons.append(InlineKeyboardButton(letter, callback_data=f"duel_ans:{duel_id}:{option_idx}"))
+        
+    rows = []
+    for i in range(0, len(buttons), 2):
+        rows.append(buttons[i:i+2])
+        
+    reply_markup = InlineKeyboardMarkup(rows)
+    
+    await context.bot.send_message(chat_id=user_id, text=text, reply_markup=reply_markup, parse_mode="Markdown")
 
 
 async def handle_duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -960,12 +967,12 @@ async def handle_duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chosen_letter = letters[selected_idx] if selected_idx < len(letters) else str(selected_idx + 1)
     
     feedback = (
-        f"✅ Correct! Chosen: <b>{chosen_letter}</b>" if is_correct else f"❌ Incorrect! Chosen: <b>{chosen_letter}</b> (Correct: <b>{correct_letter}</b>)"
+        f"✅ Correct! Chosen: *{chosen_letter}*" if is_correct else f"❌ Incorrect! Chosen: *{chosen_letter}* (Correct: *{correct_letter}*)"
         if lang == "en" else
-        f"✅ Верно! Выбрано: <b>{chosen_letter}</b>" if is_correct else f"❌ Неверно! Выбрано: <b>{chosen_letter}</b> (Правильно: <b>{correct_letter}</b>)"
+        f"✅ Верно! Выбрано: *{chosen_letter}*" if is_correct else f"❌ Неверно! Выбрано: *{chosen_letter}* (Правильно: *{correct_letter}*)"
     )
     
-    await query.edit_message_text(f"{query.message.text}\n\n{feedback}", parse_mode=ParseMode.HTML)
+    await query.edit_message_text(f"{query.message.text}\n\n{feedback}", parse_mode="Markdown")
     
     # Check if this player has finished all questions
     if session["current_index"][user_id] < 5:
