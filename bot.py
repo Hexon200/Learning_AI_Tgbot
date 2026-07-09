@@ -364,10 +364,10 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 # Keywords to identify AI-related posts on Hacker News
-AI_KEYWORDS = {
-    "ai", "llm", "llama", "gpu", "deep learning", "machine learning", 
-    "transformers", "embeddings", "agent", "rag", "fine-tune", "lora", 
-    "quantization", "qlora", "vllm", "claude", "gpt", "openai", "gemini",
+EXACT_KEYWORDS = {"ai", "llm", "rag", "dpo", "gpu", "lora", "rlhf", "vllm"}
+SUBSTRING_KEYWORDS = {
+    "llama", "deep learning", "machine learning", "transformers", "embeddings", 
+    "agent", "quantization", "qlora", "claude", "gpt", "openai", "gemini",
     "mistral", "cohere", "diffusion", "stable diffusion", "midjourney",
     "model", "models", "deepseek", "anthropic", "neural", "speech", "voice",
     "vision", "robot", "robots", "robotics", "dataset", "datasets", "training",
@@ -376,9 +376,24 @@ AI_KEYWORDS = {
 
 def is_ai_related(title: str) -> bool:
     import re
-    clean_title = re.sub(r'[^a-zA-Z0-9\s]', '', title.lower())
+    # Clean non-alphanumeric except hyphens, replace hyphens with spaces
+    clean_title = re.sub(r'[^a-zA-Z0-9\s-]', ' ', title.lower()).replace("-", " ")
     words = set(clean_title.split())
-    return any(any(kw in w for w in words) for kw in AI_KEYWORDS)
+    
+    # 1. Exact match check for short acronyms
+    if words.intersection(EXACT_KEYWORDS):
+        return True
+        
+    # 2. Substring match check for longer terms
+    for kw in SUBSTRING_KEYWORDS:
+        if " " in kw:
+            if kw in clean_title:
+                return True
+        else:
+            if any(kw in w for w in words):
+                return True
+                
+    return False
 
 async def fetch_hacker_news() -> list[dict]:
     import httpx
