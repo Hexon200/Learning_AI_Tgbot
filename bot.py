@@ -304,9 +304,11 @@ async def reply_long(message, text: str, reply_markup: InlineKeyboardMarkup | No
 
 
 def main_menu_for_lang(lang: str) -> InlineKeyboardMarkup:
+    test_yourself_label = "📝 Test Yourself" if lang == "en" else "📝 Проверить себя"
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton(t("start_quiz", lang), callback_data="start_quiz")],
+            [InlineKeyboardButton(test_yourself_label, callback_data="test_yourself")],
             [
                 InlineKeyboardButton(t("review_wrong", lang), callback_data="review"),
                 InlineKeyboardButton(t("bookmarked_menu", lang), callback_data="bookmarks"),
@@ -368,6 +370,26 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 tutor_sessions = {}
+interview_sessions = {}
+
+SYSTEM_DESIGN_CHALLENGES = [
+    {
+        "en": "Design a real-time, high-throughput Retrieval-Augmented Generation (RAG) system for a global enterprise. The system must index 1 million new documents daily, update vector embeddings within 5 seconds of ingest, and handle peak query volume of 1,000 queries per second (QPS) with an end-to-end latency budget of under 200ms.",
+        "ru": "Спроектируйте высокопроизводительную RAG-систему (генерация с дополненным поиском) для крупного предприятия. Система должна ежедневно индексировать 1 миллион новых документов, обновлять векторные эмбеддинги в течение 5 секунд после импорта и обрабатывать пиковый объем запросов в 1000 QPS с задержкой не более 200 мс."
+    },
+    {
+        "en": "Design a scalable LLM gateway and routing layer for an organization. The gateway must handle load balancing across multiple provider endpoints (OpenAI, Anthropic, local clusters), enforce rate-limits and token-quota buckets per team, dynamically fallback on high-latency or failures, and cache semantically similar queries to reduce API costs.",
+        "ru": "Спроектируйте масштабируемый шлюз LLM и слой маршрутизации для организации. Шлюз должен распределять нагрузку между провайдерами (OpenAI, Anthropic, локальные кластеры), ограничивать лимиты запросов и токенов для команд, автоматически переключаться при сбоях и кэшировать семантически похожие запросы для снижения затрат."
+    },
+    {
+        "en": "Design an autonomous multi-agent coding assistant framework. The system must support long-running tasks (up to 30 minutes), coordinate multiple specialized agents (planner, coder, reviewer), maintain task memory states across execution turns, safely execute generated code in sandboxed environments, and handle tools that can dynamically fail or time out.",
+        "ru": "Спроектируйте автономную среду для многоагентного помощника по написанию кода. Система должна поддерживать длительные задачи (до 30 минут), координировать специализированных агентов (планировщик, кодер, ревьюер), сохранять память о задачах, безопасно выполнять код в песочнице и обрабатывать сбои инструментов."
+    },
+    {
+        "en": "Design a distributed vector database indexing engine. The system needs to support billion-scale vector sets, maintain real-time indexing capabilities for inserts, support hybrid search (combining sparse keyword search with dense vector search), and run efficiently in-memory on high-RAM cloud instances without exhausting budget bounds.",
+        "ru": "Спроектируйте распределенный движок индексирования для векторной базы данных. Система должна поддерживать миллиардные наборы векторов, индексацию в реальном времени, гибридный поиск (разреженные ключевые слова + плотные векторы) и эффективно работать в памяти без превышения бюджета."
+    }
+]
 
 
 # Keywords to identify AI-related posts on Hacker News
@@ -702,6 +724,112 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception as e:
         logger.exception("News digest command failed")
         await status_msg.edit_text("⚠️ Failed to load news digest." if lang == "en" else "⚠️ Не удалось загрузить дайджест новостей.")
+
+
+async def handle_test_yourself(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    import random
+    query = update.callback_query
+    telegram_id = query.from_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    await query.answer()
+    
+    # Pick a random System Design Challenge
+    challenge = random.choice(SYSTEM_DESIGN_CHALLENGES)
+    challenge_text = challenge[lang]
+    
+    interview_sessions[telegram_id] = {
+        "challenge": challenge_text,
+        "history": [
+            {"role": "system", "content": (
+                "You are a distinguished Principal AI Engineer and System Design Interviewer. "
+                "The candidate is designing a solution for the following challenge:\n"
+                f"Challenge: {challenge_text}\n\n"
+                "As an interviewer, evaluate their response constructively but critically. Analyze their choices "
+                "of data store, LLMs, pipelines, networks, scalability strategies, bottleneck mitigation, and latency. "
+                "Ask 1-2 probing follow-up questions, and assign a rating/score out of 100 with clear justifications. "
+                "Keep your reply well-structured, professional, educational, and under 300 words. "
+                "Respond in English if the user is writing in English, otherwise respond in Russian."
+            )}
+        ]
+    }
+    
+    welcome_text = (
+        "📝 <b>System Design Interview Mode</b>\n\n"
+        "<b>Your Challenge:</b>\n"
+        f"{challenge_text}\n\n"
+        "Describe your architectural solution below (mention your stack, data flows, and optimization choices). "
+        "The AI Interviewer will evaluate your design, identify bottlenecks, and score your proposal.\n"
+        "<i>(Please wait up to 10 seconds for the evaluation after sending your answer)</i>"
+        if lang == "en" else
+        "📝 <b>Режим Системного Интервью</b>\n\n"
+        "<b>Ваша задача:</b>\n"
+        f"{challenge_text}\n\n"
+        "Опишите ваше архитектурное решение ниже (укажите используемый стек, потоки данных и оптимизации). "
+        "ИИ-Интервьюер оценит вашу архитектуру, найдет узкие места и выставит оценку вашему проекту.\n"
+        "<i>(Пожалуйста, подождите до 10 секунд для получения оценки после отправки вопроса)</i>"
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Exit Interview / Выйти" if lang == "en" else "❌ Выйти", callback_data="exit_interview")]
+    ])
+    
+    await query.edit_message_text(welcome_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+
+async def handle_interview_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    import httpx
+    telegram_id = update.effective_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    session = interview_sessions.get(telegram_id)
+    if not session:
+        return
+        
+    user_text = update.message.text
+    session["history"].append({"role": "user", "content": user_text})
+    
+    # Send typing status
+    await context.bot.send_chat_action(chat_id=telegram_id, action="typing")
+    
+    try:
+        url = "https://text.pollinations.ai/"
+        payload = {
+            "messages": session["history"],
+            "model": "openai"
+        }
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            res = await client.post(url, json=payload)
+            if res.status_code == 200:
+                ai_response = res.text
+                
+                # Clean pollinations ad footer if present
+                for ad_marker in ["Support Pollinations.AI", "🌸 Ad 🌸", "Powered by Pollinations.AI"]:
+                    if ad_marker in ai_response:
+                        ai_response = ai_response.split(ad_marker)[0].strip()
+                
+                # Strip trailing Markdown dividers and whitespace
+                while ai_response.endswith("---") or ai_response.endswith("\n") or ai_response.endswith(" "):
+                    if ai_response.endswith("---"):
+                        ai_response = ai_response[:-3].strip()
+                    else:
+                        ai_response = ai_response.strip()
+            else:
+                ai_response = "⚠️ Failed to get evaluation. Please try again." if lang == "en" else "⚠️ Не удалось получить оценку. Пожалуйста, попробуйте еще раз."
+    except Exception as e:
+        logger.error(f"Pollinations AI request failed in interview: {e}")
+        ai_response = "⚠️ An error occurred while evaluating your design." if lang == "en" else "⚠️ Произошла ошибка при оценке вашей архитектуры."
+        
+    session["history"].append({"role": "assistant", "content": ai_response})
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Another Challenge / Другая задача" if lang == "en" else "🔄 Другая задача", callback_data="test_yourself")],
+        [InlineKeyboardButton("❌ Exit Interview / Выйти" if lang == "en" else "❌ Выйти", callback_data="exit_interview")]
+    ])
+    
+    try:
+        await update.message.reply_text(ai_response, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+    except Exception:
+        # Fallback to plain text if Markdown format triggers Telegram parsing errors
+        await update.message.reply_text(ai_response, reply_markup=keyboard, disable_web_page_preview=True)
 
 
 async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE, question_id: int, selected_index: int) -> None:
@@ -1675,6 +1803,11 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await show_main_menu(update, query.from_user.id)
         elif data == "start_quiz":
             await begin_quiz(update, query.from_user.id, "quiz")
+        elif data == "test_yourself":
+            await handle_test_yourself(update, context)
+        elif data == "exit_interview":
+            interview_sessions.pop(query.from_user.id, None)
+            await show_main_menu(update, query.from_user.id)
         elif data == "news":
             await handle_news(update, context)
         elif data == "learning_paths":
@@ -1979,6 +2112,9 @@ async def fallback_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         telegram_id = update.effective_user.id
         if telegram_id in tutor_sessions:
             await handle_tutor_message(update, context)
+            return
+        elif telegram_id in interview_sessions:
+            await handle_interview_message(update, context)
             return
             
     lang = _get_lang_from_update(update)
