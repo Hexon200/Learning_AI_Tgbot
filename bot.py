@@ -30,6 +30,10 @@ from database import (
     record_answer,
     toggle_bookmark,
     update_setting,
+    subscribe_user,
+    unsubscribe_user,
+    is_subscribed,
+    get_all_subscribers,
 )
 from quiz_engine import (
     LEARNING_PATHS,
@@ -57,8 +61,8 @@ TRANSLATIONS = {
         "ru": "Добро пожаловать в викторину по AI и LLM.\n\nПрактикуйтесь в трансформерах, RAG, агентах, оценке, безопасности, локальных моделях, мультимодальном AI и кодирующих агентах.",
     },
     "help_text": {
-        "en": "Commands:\n/start - open the main menu\n/stats - see your score, streak, and topic mastery\n/settings - choose difficulty and question mode\n/news - get daily AI news digest\n/cancel - stop the active quiz\n/help - show this help",
-        "ru": "Команды:\n/start - открыть главное меню\n/stats - посмотреть очки, серию и освоение тем\n/settings - выбрать сложность и режим вопросов\n/news - получить дайджест новостей ИИ\n/cancel - остановить текущую викторину\n/help - показать справку",
+        "en": "Commands:\n/start - open the main menu\n/stats - see your score, streak, and topic mastery\n/settings - choose difficulty and question mode\n/news - get daily AI news digest\n/subscribe - subscribe to daily news broadcasts\n/unsubscribe - unsubscribe from daily news\n/cancel - stop the active quiz\n/help - show this help",
+        "ru": "Команды:\n/start - открыть главное меню\n/stats - посмотреть очки, серию и освоение тем\n/settings - выбрать сложность и режим вопросов\n/news - получить дайджест новостей ИИ\n/subscribe - подписаться на рассылку новостей\n/unsubscribe - отписаться от рассылки новостей\n/cancel - остановить текущую викторину\n/help - показать справку",
     },
     "cancelled": {"en": "Cancelled the active quiz.", "ru": "Активная викторина отменена."},
     "choose_learning_path": {"en": "Choose a learning path.", "ru": "Выберите учебный путь."},
@@ -493,6 +497,128 @@ async def fetch_reddit_rss(subreddit: str) -> list[dict]:
         logger.warning(f"Reddit r/{subreddit} RSS fetch failed: {e}")
     return news_items[:3]
 
+async def fetch_techcrunch() -> list[dict]:
+    import httpx
+    import xml.etree.ElementTree as ET
+    news_items = []
+    try:
+        url = "https://techcrunch.com/category/artificial-intelligence/feed/"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(url, headers=headers, follow_redirects=True)
+            if res.status_code == 200:
+                root = ET.fromstring(res.text)
+                channel = root.find('channel')
+                if channel is not None:
+                    items = channel.findall('item')
+                    for item in items[:10]:
+                        title = item.find('title').text
+                        link = item.find('link').text
+                        news_items.append({
+                            "title": title,
+                            "url": link,
+                            "score": 100,
+                            "source": "TechCrunch"
+                        })
+    except Exception as e:
+        logger.warning(f"TechCrunch fetch failed: {e}")
+    return news_items[:3]
+
+async def fetch_v2ex() -> list[dict]:
+    import httpx
+    import xml.etree.ElementTree as ET
+    news_items = []
+    try:
+        url = "https://www.v2ex.com/feed/go/ai.xml"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(url, headers=headers, follow_redirects=True)
+            if res.status_code == 200:
+                root = ET.fromstring(res.text)
+                ns = {'atom': 'http://www.w3.org/2005/Atom'}
+                entries = root.findall('atom:entry', ns)
+                for entry in entries[:10]:
+                    title = entry.find('atom:title', ns).text
+                    link = entry.find('atom:link', ns).attrib.get('href')
+                    news_items.append({
+                        "title": title,
+                        "url": link,
+                        "score": 100,
+                        "source": "V2EX AI"
+                    })
+    except Exception as e:
+        logger.warning(f"V2EX fetch failed: {e}")
+    return news_items[:3]
+
+async def fetch_arxiv(category: str) -> list[dict]:
+    import httpx
+    import xml.etree.ElementTree as ET
+    news_items = []
+    try:
+        url = f"https://export.arxiv.org/rss/{category}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.get(url, headers=headers, follow_redirects=True)
+            if res.status_code == 200:
+                root = ET.fromstring(res.text)
+                channel = root.find('channel')
+                if channel is not None:
+                    items = root.findall('.//{http://purl.org/rss/1.0/}item') or channel.findall('item')
+                    for item in items[:10]:
+                        title = item.find('{http://purl.org/rss/1.0/}title') or item.find('title')
+                        link = item.find('{http://purl.org/rss/1.0/}link') or item.find('link')
+                        title_text = title.text if title is not None else ""
+                        link_text = link.text if link is not None else ""
+                        
+                        news_items.append({
+                            "title": title_text,
+                            "url": link_text,
+                            "score": 100,
+                            "source": f"ArXiv {category}"
+                        })
+    except Exception as e:
+        logger.warning(f"ArXiv {category} fetch failed: {e}")
+    return news_items[:3]
+
+async def generate_evening_digest(lang: str = "en") -> str:
+    import asyncio
+    from deep_translator import GoogleTranslator
+    from datetime import datetime, timezone
+    
+    tc_task = fetch_techcrunch()
+    v2_task = fetch_v2ex()
+    ax_ai_task = fetch_arxiv("cs.AI")
+    ax_lg_task = fetch_arxiv("cs.LG")
+    
+    tc, v2, ax_ai, ax_lg = await asyncio.gather(tc_task, v2_task, ax_ai_task, ax_lg_task)
+    all_items = tc + v2 + ax_ai + ax_lg
+    
+    if not all_items:
+        return "⚠️ No trending monthly AI news found." if lang == "en" else "⚠️ Не найдено главных трендовых обновлений за этот месяц."
+        
+    digest_lines = []
+    title_label = "📰 <b>Monthly AI News Digest (Top Updates)</b>" if lang == "en" else "📰 <b>Ежемесячный дайджест новостей ИИ (Главное за месяц)</b>"
+    digest_lines.append(title_label)
+    digest_lines.append(f"Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}\n")
+    
+    for i, item in enumerate(all_items[:10], start=1):
+        title = item["title"]
+        source = item["source"]
+        url = item["url"]
+        
+        if lang == "ru":
+            try:
+                translator = GoogleTranslator(source="en", target="ru")
+                title = translator.translate(title)
+            except Exception:
+                pass
+                
+        title_safe = html.escape(title)
+        digest_lines.append(f"{i}. <b>{title_safe}</b>")
+        digest_lines.append(f"   Source: <a href=\"{url}\">{source}</a>\n")
+        
+    return "\n".join(digest_lines)
+
 async def generate_news_digest(lang: str = "en") -> str:
     import asyncio
     from deep_translator import GoogleTranslator
@@ -573,6 +699,130 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception as e:
         logger.exception("News digest command failed")
         await status_msg.edit_text("⚠️ Failed to load news digest." if lang == "en" else "⚠️ Не удалось загрузить дайджест новостей.")
+
+
+async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    ensure_user(update.effective_user)
+    telegram_id = update.effective_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    
+    try:
+        if is_subscribed(telegram_id):
+            msg = "You are already subscribed to the AI News Digest!" if lang == "en" else "Вы уже подписаны на дайджест новостей ИИ!"
+        else:
+            subscribe_user(telegram_id)
+            msg = (
+                "🎉 You have successfully subscribed to the AI News Digest!\n\n"
+                "You will receive:\n"
+                "• 1:00 PM: Daily AI news digest (Hacker News, VentureBeat, Reddit)\n"
+                "• 8:00 PM: General most important updates of the month (TechCrunch, V2EX, ArXiv)"
+                if lang == "en" else
+                "🎉 Вы успешно подписались на дайджест новостей ИИ!\n\n"
+                "Вы будете получать:\n"
+                "• 13:00: Ежедневный дайджест (Hacker News, VentureBeat, Reddit)\n"
+                "• 20:00: Главные обновления месяца (TechCrunch, V2EX, ArXiv)"
+            )
+        await update.message.reply_text(msg)
+    except Exception as e:
+        logger.exception("Subscribe command failed")
+        await update.message.reply_text("⚠️ An error occurred / Произошла ошибка.")
+
+
+async def unsubscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    ensure_user(update.effective_user)
+    telegram_id = update.effective_user.id
+    lang = get_settings(telegram_id).get("language", "en")
+    
+    try:
+        if not is_subscribed(telegram_id):
+            msg = "You are not subscribed to the AI News Digest." if lang == "en" else "Вы не подписаны на дайджест новостей ИИ."
+        else:
+            unsubscribe_user(telegram_id)
+            msg = "You have unsubscribed from the AI News Digest." if lang == "en" else "Вы отписались от дайджеста новостей ИИ."
+        await update.message.reply_text(msg)
+    except Exception as e:
+        logger.exception("Unsubscribe command failed")
+        await update.message.reply_text("⚠️ An error occurred / Произошла ошибка.")
+
+
+async def broadcast_news(application, digest_type: str):
+    subscribers = get_all_subscribers()
+    if not subscribers:
+        logger.info("No subscribers to broadcast news to.")
+        return
+        
+    logger.info(f"Broadcasting {digest_type} news to {len(subscribers)} subscribers")
+    
+    try:
+        digest_en = None
+        digest_ru = None
+        
+        for telegram_id in subscribers:
+            lang = get_settings(telegram_id).get("language", "en")
+            
+            if lang == "ru":
+                if not digest_ru:
+                    if digest_type == "daily":
+                        digest_ru = await generate_news_digest("ru")
+                    else:
+                        digest_ru = await generate_evening_digest("ru")
+                text = digest_ru
+            else:
+                if not digest_en:
+                    if digest_type == "daily":
+                        digest_en = await generate_news_digest("en")
+                    else:
+                        digest_en = await generate_evening_digest("en")
+                text = digest_en
+                
+            try:
+                await application.bot.send_message(
+                    chat_id=telegram_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    disable_web_page_preview=True
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send news to subscriber {telegram_id}: {e}")
+    except Exception as e:
+        logger.error(f"Error during news broadcast: {e}", exc_info=True)
+
+
+async def subscription_scheduler(application):
+    import datetime
+    import asyncio
+    logger.info("Subscription scheduler started")
+    last_sent_day = None
+    last_sent_hour = None
+    
+    while True:
+        try:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            # User local time is UTC+5
+            local_tz = datetime.timezone(datetime.timedelta(hours=5))
+            now_local = now.astimezone(local_tz)
+            
+            current_day = now_local.date()
+            current_hour = now_local.hour
+            current_minute = now_local.minute
+            
+            if current_minute == 0:
+                if (last_sent_day != current_day) or (last_sent_hour != current_hour):
+                    if current_hour == 13:
+                        logger.info("Triggering 1:00 PM daily news broadcast")
+                        await broadcast_news(application, "daily")
+                        last_sent_day = current_day
+                        last_sent_hour = current_hour
+                    elif current_hour == 20:
+                        logger.info("Triggering 8:00 PM monthly news broadcast")
+                        await broadcast_news(application, "monthly")
+                        last_sent_day = current_day
+                        last_sent_hour = current_hour
+                        
+        except Exception as e:
+            logger.error(f"Error in subscription scheduler loop: {e}", exc_info=True)
+            
+        await asyncio.sleep(30)
 
 
 def answer_keyboard(question: dict, lang: str = "en") -> InlineKeyboardMarkup:
@@ -1645,9 +1895,13 @@ def main() -> None:
 
     init_db()
     
+    async def post_init(application) -> None:
+        import asyncio
+        asyncio.create_task(subscription_scheduler(application))
+
     # Configure longer connection timeouts for cloud environments
     request = HTTPXRequest(connect_timeout=30.0, read_timeout=30.0, write_timeout=30.0)
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).request(request).build()
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).request(request).post_init(post_init).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
@@ -1655,6 +1909,8 @@ def main() -> None:
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("settings", settings_command))
     app.add_handler(CommandHandler("news", news_command))
+    app.add_handler(CommandHandler("subscribe", subscribe_command))
+    app.add_handler(CommandHandler("unsubscribe", unsubscribe_command))
     app.add_handler(CallbackQueryHandler(callback_router))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, fallback_message))
     logger.info("Bot started")

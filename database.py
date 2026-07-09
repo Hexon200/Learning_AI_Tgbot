@@ -174,11 +174,16 @@ def init_db() -> None:
                     PRIMARY KEY (telegram_id, question_id)
                 );
 
-                CREATE TABLE IF NOT EXISTS bookmarks (
+                 CREATE TABLE IF NOT EXISTS bookmarks (
                     telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
                     question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (telegram_id, question_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS news_subscriptions (
+                    telegram_id BIGINT PRIMARY KEY REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
@@ -251,11 +256,16 @@ def init_db() -> None:
                     PRIMARY KEY (telegram_id, question_id)
                 );
 
-                CREATE TABLE IF NOT EXISTS bookmarks (
+                 CREATE TABLE IF NOT EXISTS bookmarks (
                     telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
                     question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (telegram_id, question_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS news_subscriptions (
+                    telegram_id INTEGER PRIMARY KEY REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
@@ -735,3 +745,40 @@ def is_bookmarked(telegram_id: int, question_id: int) -> bool:
             (telegram_id, question_id),
         ).fetchone()
         return bool(row)
+
+
+def subscribe_user(telegram_id: int) -> None:
+    with get_db() as conn:
+        if IS_PG:
+            conn.execute(
+                "INSERT INTO news_subscriptions (telegram_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                (telegram_id,),
+            )
+        else:
+            conn.execute(
+                "INSERT OR IGNORE INTO news_subscriptions (telegram_id) VALUES (?)",
+                (telegram_id,),
+            )
+
+
+def unsubscribe_user(telegram_id: int) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM news_subscriptions WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+
+
+def is_subscribed(telegram_id: int) -> bool:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM news_subscriptions WHERE telegram_id = ?",
+            (telegram_id,),
+        ).fetchone()
+        return bool(row)
+
+
+def get_all_subscribers() -> list[int]:
+    with get_db() as conn:
+        rows = conn.execute("SELECT telegram_id FROM news_subscriptions").fetchall()
+        return [r["telegram_id"] for r in rows]
