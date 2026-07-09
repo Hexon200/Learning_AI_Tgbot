@@ -743,11 +743,13 @@ async def handle_ask_tutor(update: Update, context: ContextTypes.DEFAULT_TYPE, q
     
     welcome_text = (
         "🤖 <b>AI Tutor Chat Mode</b>\n\n"
-        "Ask me any questions about this topic! I will explain concepts, show code examples, and clarify details.\n\n"
+        "Ask me any questions about this topic! I will explain concepts, show code examples, and clarify details.\n"
+        "<i>(Please wait up to 10 seconds for a response after sending a question)</i>\n\n"
         "Type your question below, or click <b>Cancel</b> to return to the quiz."
         if lang == "en" else
         "🤖 <b>Чат с ИИ-Тьютором</b>\n\n"
-        "Задайте мне любые вопросы по этой теме! Я объясню концепции, покажу примеры кода и отвечу на ваши вопросы.\n\n"
+        "Задайте мне любые вопросы по этой теме! Я объясню концепции, покажу примеры кода и отвечу на ваши вопросы.\n"
+        "<i>(Пожалуйста, подождите до 10 секунд для получения ответа после отправки вопроса)</i>\n\n"
         "Напишите ваш вопрос ниже или нажмите <b>Отмена</b>, чтобы вернуться к викторине."
     )
     
